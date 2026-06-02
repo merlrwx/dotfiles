@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Terminal-focused dotfiles setup script
+DOTFILES_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+create_symlinks() {
+  local items=("$@")
+  for item in "${items[@]}"; do
+    IFS=':' read -r source target <<<"$item"
+    
+    if [ -L "$target" ]; then
+      echo -e "${YELLOW}Removing existing symlink${NC} $target"
+      unlink "$target"
+    elif [ -d "$target" ]; then
+      echo -e "${YELLOW}Warning: $target is a directory. Skipping...${NC}"
+      continue
+    elif [ -e "$target" ]; then
+      echo -e "${YELLOW}Warning: $target already exists. Skipping...${NC}"
+      continue
+    fi
+    
+    ln -s "$DOTFILES_DIR/$source" "$target"
+    echo -e "${GREEN}Created symlink${NC} for $source"
+  done
+}
+
+# Configuration items
+config_items=(
+  ".bashrc:$HOME/.bashrc"
+  ".bash_profile:$HOME/.bash_profile"
+  ".vimrc:$HOME/.vimrc"
+  ".tmux.conf:$HOME/.tmux.conf"
+  "alacritty/alacritty.toml:$XDG_CONFIG_HOME/alacritty/alacritty.toml"
+)
+
+# Create necessary directories
+mkdir -p "$XDG_CONFIG_HOME/alacritty"
+
+# Create symlinks
+echo -e "${GREEN}Setting up dotfiles...${NC}\n"
+create_symlinks "${config_items[@]}"
+
+echo -e "\n${GREEN}Setup complete!${NC}"
