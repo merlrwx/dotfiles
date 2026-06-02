@@ -7,10 +7,10 @@ Essential terminal configuration for bash, vim, tmux, and alacritty.
 Clone the repository and run the setup script:
 
 ```bash
-DOTFILES_DIR=$HOME/Repos/github.com/mischavandenburg
+DOTFILES_DIR=$HOME/Repos/github.com/CareSouth
 mkdir -p $DOTFILES_DIR
 cd $DOTFILES_DIR
-git clone https://github.com/mischavandenburg/dotfiles.git
+git clone https://github.com/CareSouth/dotfiles.git
 cd dotfiles
 bash setup.sh
 ```
