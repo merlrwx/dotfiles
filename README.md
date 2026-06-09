@@ -7,12 +7,13 @@ Essential terminal configuration for bash, vim, tmux, and alacritty.
 Clone the repository and run the setup script:
 
 ```bash
-DOTFILES_DIR=$HOME/Repos/github.com/CareSouth
-mkdir -p $DOTFILES_DIR
-cd $DOTFILES_DIR
+PUBLIC_REPOS="$HOME/JD/20-29 Code/21 Public Repos"
+mkdir -p "$PUBLIC_REPOS"
+cd "$PUBLIC_REPOS"
 git clone https://github.com/CareSouth/dotfiles.git
-cd dotfiles
-bash setup.sh
+mv dotfiles "21.02 dotfiles"
+cd "21.02 dotfiles"
+./setup
 ```
 
 ## What's Included
@@ -48,17 +49,5 @@ bash setup.sh
 The setup script creates symlinks for all configurations. Run it to initialize your dotfiles:
 
 ```bash
-bash setup.sh
+./setup
 ```
-
-You can safely run it multiple times — it handles existing files gracefully.
-
-## Customization
-
-Edit the configuration files as needed:
-- Bash: `.bashrc` and `.bash_profile`
-- Vim: `.vimrc`
-- Tmux: `.tmux.conf`
-- Alacritty: `alacritty/alacritty.toml`
-
-Changes take effect immediately for new terminal sessions.

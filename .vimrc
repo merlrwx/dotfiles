@@ -17,9 +17,12 @@ set smartcase
 " Indentation
 set autoindent
 set expandtab
-set tabstop=4
-set shiftwidth=4
-set softtabstop=4
+set tabstop=2
+set shiftwidth=2
+set softtabstop=2
+
+" Highlight trailing whitespace in all files
+autocmd BufRead,BufNewFile * match Error /\s\+$/
 
 " Quality of life
 set mouse=a
@@ -30,6 +33,9 @@ set backspace=indent,eol,start
 " Syntax/filetype
 syntax on
 filetype plugin indent on
+
+" Ensure Vim uses filetype plugins
+filetype plugin on
 
 " Easier reload/edit vimrc
 nnoremap <leader>ev :e ~/.vimrc<CR>

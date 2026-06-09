@@ -48,9 +48,77 @@ alias gl='git log --oneline --graph --decorate --all'
 alias eb='vim ~/.bashrc'
 alias sbr='source ~/.bashrc'
 
+
+
+# Golang environment variables
+export GOROOT=/usr/local/go
+export GOPATH=$HOME/go
+
+# Update PATH to include GOPATH and GOROOT binaries
+export PATH=$GOPATH/bin:$GOROOT/bin:$HOME/.local/bin:$PATH
+
+# Fabric
+# Loop through all files in the ~/.config/fabric/patterns directory
+for pattern_file in $HOME/.config/fabric/patterns/*; do
+    # Get the base name of the file (i.e., remove the directory path)
+    pattern_name="$(basename "$pattern_file")"
+    alias_name="${FABRIC_ALIAS_PREFIX:-}${pattern_name}"
+
+    # Create an alias in the form: alias pattern_name="fabric --pattern pattern_name"
+    alias_command="alias $alias_name='fabric --pattern $pattern_name'"
+
+    # Evaluate the alias command to add it to the current shell
+    eval "$alias_command"
+done
+
+yt() {
+    if [ "$#" -eq 0 ] || [ "$#" -gt 2 ]; then
+        echo "Usage: yt [-t | --timestamps] youtube-link"
+        echo "Use the '-t' flag to get the transcript with timestamps."
+        return 1
+    fi
+
+    transcript_flag="--transcript"
+    if [ "$1" = "-t" ] || [ "$1" = "--timestamps" ]; then
+        transcript_flag="--transcript-with-timestamps"
+        shift
+    fi
+    local video_link="$1"
+    fabric -y "$video_link" $transcript_flag
+}
+
+
+# Kubernetes
+alias k='kubectl'
+
+# Bash completion
+if [ -f /usr/share/bash-completion/bash_completion ]; then
+    source /usr/share/bash-completion/bash_completion
+fi
+
+if [ -f /usr/share/bash-completion/completions/kubectl ]; then
+    source /usr/share/bash-completion/completions/kubectl
+elif command -v kubectl >/dev/null 2>&1; then
+    source <(kubectl completion bash)
+fi
+
+complete -o default -F __start_kubectl k
+
 # SSH agent
 #if [ -z "$SSH_AUTH_SOCK" ]; then
 #    eval "$(ssh-agent -s)" >/dev/null
 #fi
 
 #ssh-add -l >/dev/null 2>&1 || ssh-add ~/.ssh/id_ed25519
+
+# Auto-start tmux in Alacritty (only if not already in tmux)
+if [[ -z "$TMUX" ]] && [[ "$TERM" == "alacritty" ]]; then
+    exec tmux new-session -s main
+fi
+
+### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
+export PATH="/home/jason/.rd/bin:$PATH"
+### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
+if [ -f /path/to/fabric/completions/fabric.bash ]; then
+    source /path/to/fabric/completions/fabric.bash
+fi

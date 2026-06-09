@@ -38,6 +38,7 @@ config_items=(
   ".vimrc:$HOME/.vimrc"
   ".tmux.conf:$HOME/.tmux.conf"
   "alacritty/alacritty.toml:$XDG_CONFIG_HOME/alacritty/alacritty.toml"
+  "alacritty/themes:$XDG_CONFIG_HOME/alacritty/themes"
 )
 
 # Create necessary directories
