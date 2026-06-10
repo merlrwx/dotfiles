@@ -109,7 +109,7 @@ if [ -z "$SSH_AUTH_SOCK" ]; then
     eval "$(ssh-agent -s)" >/dev/null
 fi
 
-ssh-add -l >/dev/null 2>&1 || ssh-add ~/.ssh/id_ed25519
+ssh-add -l >/dev/null 2>&1 || ssh-add ~/.ssh/id_ed25519 >/dev/null 2>&1
 
 # Auto-start tmux in Alacritty (only if not already in tmux)
 if [[ -z "$TMUX" ]] && [[ "$TERM" == "alacritty" ]]; then
