@@ -2,3 +2,4 @@
 bat = "latest"
 chezmoi = "latest"
 vim = "latest"
+starship = "latest"

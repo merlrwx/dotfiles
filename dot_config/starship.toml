@@ -1,0 +1,19 @@
+format = "$username$directory$git_branch\n$character "
+
+add_newline = false
+
+[username]
+show_always = true
+format = "[$user]($style) "
+
+[directory]
+truncation_length = 2
+truncate_to_repo = true
+format = "[$path]($style) "
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+
+[character]
+success_symbol = "[➜](bold green)"
+error_symbol = "[➜](bold red)"
