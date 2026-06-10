@@ -4,5 +4,16 @@ set -euo pipefail
 
 # packages hash: {{ include "dot_config/mise/config.toml" | sha256sum }}
 
-$HOME/.local/bin/mise trust $HOME/.config/mise/config.toml
-$HOME/.local/bin/mise install
+MISE="$HOME/.local/bin/mise"
+
+# Trust the source-side chezmoi copy, useful when editing inside `chezmoi cd`
+if [ -f "$HOME/.local/share/chezmoi/dot_config/mise/config.toml" ]; then
+    "$MISE" trust "$HOME/.local/share/chezmoi/dot_config/mise/config.toml"
+fi
+
+# Trust the real applied mise config
+if [ -f "$HOME/.config/mise/config.toml" ]; then
+    "$MISE" trust "$HOME/.config/mise/config.toml"
+fi
+
+"$MISE" install
