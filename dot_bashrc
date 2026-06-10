@@ -116,6 +116,9 @@ if [[ -z "$TMUX" ]] && [[ "$TERM" == "alacritty" ]]; then
     exec tmux new-session -s main
 fi
 
+# Activate mise
+eval "$(mise activate bash)"
+
 ### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
 export PATH="/home/jason/.rd/bin:$PATH"
 ### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
