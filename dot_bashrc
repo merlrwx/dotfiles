@@ -126,9 +126,31 @@ if command -v starship >/dev/null 2>&1; then
   eval "$(starship init bash)"
 fi
 
-### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
-export PATH="/home/jason/.rd/bin:$PATH"
-### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
+# fabric
 if [ -f /path/to/fabric/completions/fabric.bash ]; then
     source /path/to/fabric/completions/fabric.bash
+fi
+
+# Docker helpers
+if command -v docker >/dev/null 2>&1; then
+  alias dctx='docker context ls'
+  alias dinfo="docker info | grep -Ei 'operating system|name|server version'"
+
+  dnative() {
+    if docker context inspect fedora-docker >/dev/null 2>&1; then
+      docker context use fedora-docker
+    elif docker context inspect default >/dev/null 2>&1; then
+      docker context use default
+    else
+      echo "No native Docker context found."
+    fi
+  }
+
+  drancher() {
+    if docker context inspect rancher-desktop >/dev/null 2>&1; then
+      docker context use rancher-desktop
+    else
+      echo "No rancher-desktop Docker context found."
+    fi
+  }
 fi
