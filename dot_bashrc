@@ -51,7 +51,6 @@ alias sbr='source ~/.bashrc'
 
 
 # Golang environment variables
-export GOROOT=/usr/local/go
 export GOPATH=$HOME/go
 
 # Update PATH to include GOPATH and GOROOT binaries
