@@ -1,5 +1,7 @@
 [tools]
 bat = "latest"
+tmux = "latest"
 chezmoi = "latest"
 vim = "latest"
 starship = "latest"
+gh = "latest"
