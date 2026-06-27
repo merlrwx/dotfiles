@@ -47,7 +47,7 @@ alias gl='git log --oneline --graph --decorate --all'
 
 alias eb='vim ~/.bashrc'
 alias sbr='source ~/.bashrc'
-
+alias repos='cd ~/jd/20-29-code/repos'
 
 
 # Golang environment variables
