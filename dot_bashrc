@@ -17,7 +17,7 @@ export VISUAL=vim
 export BROWSER=firefox
 
 # Useful folders
-export REPOS="$HOME/Repos"
+export REPOS="$HOME/jd/20-29-code/repos"
 export DOTFILES="$HOME/.dotfiles"
 
 # Add local scripts/apps to PATH
@@ -47,7 +47,6 @@ alias gl='git log --oneline --graph --decorate --all'
 
 alias eb='vim ~/.bashrc'
 alias sbr='source ~/.bashrc'
-alias repos='cd ~/jd/20-29-code/repos'
 
 
 # Golang environment variables
