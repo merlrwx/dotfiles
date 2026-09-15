@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+
+set -eu
+
+timestamp="$(date +%Y-%m-%d_%H-%M-%S)"
+screenshot_dir="${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"
+mkdir -p "$screenshot_dir"
+
+file="$screenshot_dir/snip-$timestamp.png"
+
+geometry="$(slurp)" || exit 0
+[ -n "$geometry" ] || exit 0
+
+grim -g "$geometry" "$file"
+wl-copy --type image/png < "$file"
+notify-send "Screenshot saved" "$file"

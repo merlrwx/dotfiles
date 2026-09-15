@@ -1,0 +1,81 @@
+* {
+    bg: #282828ee;
+    bg-alt: #32302f;
+    fg: #ebdbb2;
+    muted: #a89984;
+    accent: #d8a657;
+    border: #504945;
+}
+
+window {
+    width: 600px;
+    border: 2px;
+    border-color: #504945;
+    border-radius: 10px;
+    background-color: #282828f2;
+}
+
+mainbox {
+    padding: 14px;
+    background-color: transparent;
+    children: [ inputbar, listview ];
+}
+
+inputbar {
+    padding: 10px;
+    border-radius: 7px;
+    background-color: #32302fee;
+    children: [ prompt, entry ];
+}
+
+prompt {
+    padding: 0 10px 0 0;
+    text-color: @accent;
+    background-color: #282828;
+}
+
+entry {
+    border: 0;
+    border-radius: 4px;
+    background-color: #282828;
+    text-color: @fg;
+    placeholder: "Launch…";
+    placeholder-color: @muted;
+}
+
+listview {
+    lines: 8;
+    spacing: 5px;
+    padding: 12px 0 0;
+    background-color: transparent;
+}
+
+element {
+    padding: 9px;
+    border-radius: 7px;
+    background-color: transparent;
+}
+
+element-text {
+    text-color: @fg;
+    background-color: transparent;
+}
+
+element selected element-text {
+    text-color: #282828;
+}
+
+element-text selected {
+    text-color: #282828;
+}
+
+element-icon {
+    size: 1.2em;
+    margin: 0 10px 0 0;
+    background-color: transparent;
+}
+
+element selected {
+    background-color: @accent;
+    text-color: #282828;
+}

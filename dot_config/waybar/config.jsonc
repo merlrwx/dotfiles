@@ -1,0 +1,78 @@
+{
+  "position": "bottom",
+  "height": 36,
+  "spacing": 4,
+
+  "modules-left": [
+    "sway/workspaces",
+    "sway/mode"
+  ],
+
+  "modules-center": [
+    "sway/window"
+  ],
+
+  "modules-right": [
+    "network",
+    "pulseaudio",
+    "cpu",
+    "memory",
+    "bluetooth",
+    "clock",
+    "tray"
+  ],
+
+  "sway/workspaces": {
+    "disable-scroll": true,
+    "all-outputs": true
+  },
+
+  "sway/mode": {
+    "format": "<span style=\"italic\">{}</span>"
+  },
+
+  "sway/window": {
+    "max-length": 80
+  },
+
+  "network": {
+    "markup": "pango",
+    "format-ethernet": "<span font_family='Font Awesome 6 Free'></span> {ipaddr}",
+    "format-wifi": "<span font_family='Font Awesome 6 Free'></span> {essid}",
+    "format-disconnected": "<span font_family='Font Awesome 6 Free'></span> offline"
+  },
+
+  "pulseaudio": {
+    "format": " {volume}%",
+    "format-muted": " muted",
+    "on-click": "pavucontrol"
+  },
+
+  "cpu": {
+    "markup": "pango",
+    "format": "<span font_family='Font Awesome 6 Free'></span> {usage}%"
+  },
+
+  "memory": {
+    "markup": "pango",
+    "format": "<span font_family='Font Awesome 6 Free'></span> {}%"
+  },
+
+  "bluetooth": {
+    "format": " {status}",
+    "format-disabled": " off",
+    "format-off": " off",
+    "format-on": " on",
+    "format-connected": " {num_connections}",
+    "tooltip-format": "{controller_alias}: {status}"
+  },
+
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "format-alt": "{:%Y-%m-%d}"
+  },
+
+  "tray": {
+    "spacing": 6
+  }
+}

@@ -1,3 +1,9 @@
 setup
+old-setup
+README.md
+alacritty/**
 archive_*/**
 **/archive_*/**
+
+# Host-specific output layouts stay local to each machine.
+.config/sway/config.d/10-desktop-outputs.conf
