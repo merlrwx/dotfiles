@@ -1,0 +1,4 @@
+interface:
+  display_name: "Conventional Commits"
+  short_description: "Create compliant Git commit messages"
+  default_prompt: "Create a Conventional Commits 1.0.0 message for the staged changes."

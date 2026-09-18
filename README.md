@@ -32,13 +32,16 @@ The first apply may ask for `sudo` so it can install the Fedora packages.
 - Rofi configuration and Gruvbox theme
 - Alacritty, Bash, Vim, tmux, Starship, and mise
 - Herdr preferences and its Codex session integration
-- Codex model preferences, MCP endpoints, and portable project trust
+- Codex model preferences, MCP endpoints, portable project trust, and skills
 - Screenshot helper and wallpaper
 - Fedora packages required by the desktop configuration
 
 Codex authentication, conversations, memories, databases, caches, generated
 rules, and machine identity are deliberately not tracked. On a new machine,
 run `codex` once and sign in after `chezmoi apply` finishes.
+
+Codex loads the global Caveman skill on demand and automatically follows the
+Conventional Commits skill whenever it creates or amends a Git commit.
 
 Machine-specific output settings are deliberately not tracked. Put monitor and
 workspace assignments in:
