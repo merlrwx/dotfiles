@@ -1,8 +1,8 @@
 # Fedora Sway Dotfiles
 
 Portable configuration for Fedora Sway, Bash, Vim, tmux, Alacritty, Waybar,
-Rofi, Starship, and mise. Chezmoi installs the configuration and the required
-Fedora desktop packages.
+Rofi, Starship, mise, Herdr, and Codex. Chezmoi installs the configuration and
+the required Fedora desktop packages.
 
 ## Fresh Fedora setup
 
@@ -31,8 +31,14 @@ The first apply may ask for `sudo` so it can install the Fedora packages.
 - Waybar configuration and styling
 - Rofi configuration and Gruvbox theme
 - Alacritty, Bash, Vim, tmux, Starship, and mise
+- Herdr preferences and its Codex session integration
+- Codex model preferences, MCP endpoints, and portable project trust
 - Screenshot helper and wallpaper
 - Fedora packages required by the desktop configuration
+
+Codex authentication, conversations, memories, databases, caches, generated
+rules, and machine identity are deliberately not tracked. On a new machine,
+run `codex` once and sign in after `chezmoi apply` finishes.
 
 Machine-specific output settings are deliberately not tracked. Put monitor and
 workspace assignments in:

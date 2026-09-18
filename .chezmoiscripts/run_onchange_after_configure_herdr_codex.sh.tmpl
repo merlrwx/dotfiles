@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Re-run when either managed configuration changes.
+# herdr config: {{ include "dot_config/herdr/config.toml" | sha256sum }}
+# codex config: {{ include "dot_codex/private_config.toml.tmpl" | sha256sum }}
+# codex hooks: {{ include "dot_codex/hooks.json.tmpl" | sha256sum }}
+
+if ! command -v herdr >/dev/null 2>&1; then
+    exit 0
+fi
+
+herdr config check
+
+if command -v codex >/dev/null 2>&1; then
+    herdr integration install codex
+fi

@@ -29,6 +29,13 @@ set mouse=a
 set wildmenu
 set nowrap
 set backspace=indent,eol,start
+set hidden
+set splitbelow
+set splitright
+
+" Search for project files recursively with :find and Tab completion
+set path+=**
+set wildignore+=*/.git/*,*/node_modules/*,*/.venv/*,*/dist/*,*/build/*,*/target/*
 
 " Syntax/filetype
 syntax on
@@ -36,10 +43,3 @@ filetype plugin indent on
 
 " Ensure Vim uses filetype plugins
 filetype plugin on
-
-" Easier reload/edit vimrc
-nnoremap <leader>ev :e ~/.vimrc<CR>
-nnoremap <leader>sv :source ~/.vimrc<CR>
-
-" Clear search highlight with Ctrl+l
-nnoremap <C-l> :nohlsearch<CR><C-l>

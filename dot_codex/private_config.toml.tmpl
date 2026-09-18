@@ -1,0 +1,55 @@
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"
+service_tier = "default"
+plan_mode_reasoning_effort = "xhigh"
+
+# Trust the synchronized workspace, but do not automatically trust Downloads or
+# the rest of the home directory on a newly provisioned machine.
+[projects."{{ .chezmoi.homeDir }}/jd"]
+trust_level = "trusted"
+
+[mcp_servers."homelab-mcp"]
+url = "https://mcp-server.home.arpa/mcp/"
+
+[mcp_servers."homelab-mcp".tools.execute_command]
+approval_mode = "approve"
+
+[mcp_servers."homelab-mcp".tools.grafana_list_alerts]
+approval_mode = "approve"
+
+[mcp_servers."homelab-mcp".tools.kubernetes_kubectl]
+approval_mode = "approve"
+
+[mcp_servers."homelab-mcp".tools.query_homelab]
+approval_mode = "approve"
+
+[mcp_servers."homelab-mcp".tools.vault_read_secret]
+approval_mode = "approve"
+
+[mcp_servers."homelab-mcp".tools.gitlab_tool]
+approval_mode = "approve"
+
+[mcp_servers."homelab-mcp".tools.vault_api_request]
+approval_mode = "approve"
+
+[mcp_servers.gitnexus]
+url = "https://gitnexus.home.arpa/api/mcp/"
+
+[mcp_servers.gitnexus.tools.list_repos]
+approval_mode = "approve"
+
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"
+
+[plugins."superpowers@openai-curated"]
+enabled = false
+
+[features]
+hooks = true
+
+# Herdr verifies this entry when installing its Codex integration. The
+# run_onchange script refreshes it if Herdr changes the integration format.
+[hooks.state]
+
+[hooks.state."{{ .chezmoi.homeDir }}/.codex/hooks.json:session_start:0:0"]
+trusted_hash = "sha256:f6efbe1bf3c15ad431693d350a2d64d748c77589bee639da7aec536b8dfa11f7"

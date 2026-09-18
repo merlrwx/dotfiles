@@ -13,20 +13,20 @@ $python\
 $character"""
 
 [directory]
-style = "#83a598"
+style = "bold #7daea3"
 
 [character]
-success_symbol = "[❯](#d3869b)"
-error_symbol = "[❯](#fb4934)"
-vimcmd_symbol = "[❮](#b8bb26)"
+success_symbol = "[❯](bold #a9b665)"
+error_symbol = "[❯](bold #ea6962)"
+vimcmd_symbol = "[❮](bold #d8a657)"
 
 [git_branch]
 format = "[$branch]($style)"
-style = "#928374"
+style = "bold #d8a657"
 
 [git_status]
 format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#d3869b) ($ahead_behind$stashed)]($style)"
-style = "#8ec07c"
+style = "#89b482"
 conflicted = "​"
 untracked = "​"
 modified = "​"
@@ -41,7 +41,7 @@ style = "#928374"
 
 [cmd_duration]
 format = "[$duration]($style) "
-style = "#fabd2f"
+style = "#e78a4e"
 
 [python]
 format = "[$virtualenv]($style) "
