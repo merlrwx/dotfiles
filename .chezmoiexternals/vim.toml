@@ -1,0 +1,4 @@
+[".vim/pack/themes/start/gruvbox-material"]
+type = "archive"
+url = "https://github.com/sainnhe/gruvbox-material/archive/11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79.tar.gz"
+stripComponents = 1

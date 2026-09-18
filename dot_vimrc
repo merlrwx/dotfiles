@@ -43,3 +43,19 @@ filetype plugin indent on
 
 " Ensure Vim uses filetype plugins
 filetype plugin on
+
+" Gruvbox Material Dark (medium contrast, material foreground)
+if has('termguicolors')
+  set termguicolors
+endif
+let g:gruvbox_material_background = 'medium'
+let g:gruvbox_material_foreground = 'material'
+let g:gruvbox_material_better_performance = 1
+silent! packadd! gruvbox-material
+if !empty(globpath(&runtimepath, 'colors/gruvbox-material.vim'))
+  colorscheme gruvbox-material
+endif
+
+" Keep lines past the end of the file quiet instead of blue
+highlight EndOfBuffer guifg=#504945 guibg=NONE ctermfg=8 ctermbg=NONE
+highlight CursorLineNr guifg=#d8a657 guibg=NONE ctermfg=3 ctermbg=NONE
