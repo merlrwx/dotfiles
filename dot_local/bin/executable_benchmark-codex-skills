@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""Compare baseline, Caveman, Ponytail, and combined Codex profiles."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
+from pathlib import Path
+
+
+PROFILES = {
+    "baseline": (False, False, "Do not use the Caveman or Ponytail skills."),
+    "caveman": (True, False, "Use the Caveman skill in full mode for this task."),
+    "ponytail": (False, True, "Use the Ponytail skill in full mode for this task."),
+    "combined": (True, True, "Use Caveman full and Ponytail full for this task."),
+}
+
+
+class BenchmarkError(RuntimeError):
+    pass
+
+
+def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+    return subprocess.run(command, check=False, **kwargs)
+
+
+def checked(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+    result = run(command, capture_output=True, text=True, **kwargs)
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise BenchmarkError(f"{' '.join(command)} failed: {detail}")
+    return result
+
+
+def expand_path(value: str, base: Path | None = None) -> Path:
+    expanded = Path(os.path.expandvars(os.path.expanduser(value)))
+    if not expanded.is_absolute() and base is not None:
+        expanded = base / expanded
+    return expanded.resolve()
+
+
+def archive_snapshot(repo: Path, revision: str, destination: Path) -> None:
+    archive = subprocess.Popen(
+        ["git", "-C", str(repo), "archive", "--format=tar", revision],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert archive.stdout is not None
+    try:
+        with tarfile.open(fileobj=archive.stdout, mode="r|") as stream:
+            stream.extractall(destination, filter="data")
+    finally:
+        archive.stdout.close()
+    stderr = archive.stderr.read().decode() if archive.stderr else ""
+    if archive.wait():
+        raise BenchmarkError(f"git archive failed for {repo}@{revision}: {stderr.strip()}")
+
+
+def initialize_snapshot(path: Path) -> str:
+    checked(["git", "-C", str(path), "init", "-q"])
+    checked(["git", "-C", str(path), "config", "user.name", "Codex Benchmark"])
+    checked(["git", "-C", str(path), "config", "user.email", "benchmark@invalid"])
+    checked(["git", "-C", str(path), "add", "-A"])
+    checked(["git", "-C", str(path), "commit", "-qm", "chore(benchmark): establish baseline"])
+    exclude = path / ".git" / "info" / "exclude"
+    with exclude.open("a", encoding="utf-8") as handle:
+        handle.write("\n/.agent/\n")
+    return checked(["git", "-C", str(path), "rev-parse", "HEAD"]).stdout.strip()
+
+
+def skill_paths() -> tuple[Path, Path]:
+    caveman = Path.home() / ".codex/skills/caveman/SKILL.md"
+    ponytail_candidates = sorted(
+        (Path.home() / ".codex/plugins/cache").glob(
+            "*/engineering-suite-ponytail/*/skills/ponytail/SKILL.md"
+        )
+    )
+    if not caveman.is_file() or not ponytail_candidates:
+        raise BenchmarkError("Caveman or Ponytail skill is not installed")
+    return caveman.resolve(), ponytail_candidates[-1].resolve()
+
+
+def skill_override(caveman: Path, ponytail: Path, use_caveman: bool, use_ponytail: bool) -> str:
+    values = [
+        {"path": str(caveman), "enabled": use_caveman},
+        {"path": str(ponytail), "enabled": use_ponytail},
+    ]
+    entries = ",".join(
+        f'{{path="{item["path"]}",enabled={str(item["enabled"]).lower()}}}' for item in values
+    )
+    return f"skills.config=[{entries}]"
+
+
+def prompt_for(task: dict[str, object], directive: str) -> str:
+    return f"""You are running one arm of a controlled coding benchmark in a disposable,
+history-free repository. Work only inside the current repository. Do not inspect
+other repositories or Git history outside it. Do not use network services, make
+external changes, commit, push, deploy, or ask for clarification. Implement the
+task, add focused tests when useful, run relevant local checks, inspect the final
+diff, and then stop.
+
+Profile instruction: {directive}
+
+Task:
+{task['prompt']}
+"""
+
+
+def parse_events(path: Path) -> tuple[int, dict[str, int]]:
+    tool_calls = 0
+    usage: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "item.completed":
+            item_type = (event.get("item") or {}).get("type")
+            if item_type not in {None, "agent_message", "reasoning", "todo_list"}:
+                tool_calls += 1
+        if event.get("type") == "turn.completed" and isinstance(event.get("usage"), dict):
+            usage = {key: int(value) for key, value in event["usage"].items() if isinstance(value, int)}
+    return tool_calls, usage
+
+
+def diff_metrics(path: Path, baseline: str) -> dict[str, object]:
+    names = checked(["git", "-C", str(path), "diff", "--name-only", baseline]).stdout.splitlines()
+    untracked = checked(
+        ["git", "-C", str(path), "ls-files", "--others", "--exclude-standard"]
+    ).stdout.splitlines()
+    untracked = [name for name in untracked if not name.startswith(".agent/")]
+    files = sorted(set(names + untracked))
+
+    added = deleted = 0
+    numstat = checked(["git", "-C", str(path), "diff", "--numstat", baseline]).stdout
+    for line in numstat.splitlines():
+        add, remove, _ = line.split("\t", 2)
+        if add.isdigit():
+            added += int(add)
+        if remove.isdigit():
+            deleted += int(remove)
+    for name in untracked:
+        candidate = path / name
+        if candidate.is_file():
+            try:
+                added += len(candidate.read_text(encoding="utf-8").splitlines())
+            except UnicodeDecodeError:
+                pass
+
+    dependency_names = {
+        "package.json",
+        "pyproject.toml",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "Cargo.toml",
+        "go.mod",
+    }
+    dependency_files = [name for name in files if Path(name).name in dependency_names]
+    return {
+        "files_changed": len(files),
+        "changed_files": files,
+        "added_lines": added,
+        "deleted_lines": deleted,
+        "dependency_files_changed": dependency_files,
+    }
+
+
+def inject_evaluators(task: dict[str, object], manifest_dir: Path, snapshot: Path) -> None:
+    for evaluator in task.get("evaluators", []):
+        source = expand_path(evaluator["source"], manifest_dir)
+        destination = snapshot / evaluator["destination"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def verify(task: dict[str, object], snapshot: Path, log: Path) -> tuple[bool, list[dict[str, object]]]:
+    results = []
+    passed = True
+    with log.open("w", encoding="utf-8") as handle:
+        for command in task["verify"]:
+            started = time.monotonic()
+            result = run(
+                [str(part) for part in command],
+                cwd=snapshot,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=300,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            )
+            record = {
+                "command": command,
+                "exit_code": result.returncode,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+            }
+            results.append(record)
+            if result.returncode:
+                passed = False
+                break
+    return passed, results
+
+
+def benchmark_run(
+    task: dict[str, object],
+    profile: str,
+    args: argparse.Namespace,
+    manifest_dir: Path,
+    output: Path,
+    caveman: Path,
+    ponytail: Path,
+) -> dict[str, object]:
+    run_name = f"{task['name']}--{profile}"
+    run_dir = output / "runs" / run_name
+    snapshot = run_dir / "workspace"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    snapshot.mkdir()
+
+    repo = expand_path(str(task["repo"]))
+    archive_snapshot(repo, str(task["base"]), snapshot)
+    baseline = initialize_snapshot(snapshot)
+
+    use_caveman, use_ponytail, directive = PROFILES[profile]
+    events = run_dir / "events.jsonl"
+    errors = run_dir / "stderr.log"
+    final_message = run_dir / "final.txt"
+    command = [
+        args.codex,
+        "exec",
+        "--ephemeral",
+        "--json",
+        "--disable",
+        "hooks",
+        "--sandbox",
+        "workspace-write",
+        "-c",
+        'approval_policy="never"',
+        "-c",
+        f'model_reasoning_effort="{args.reasoning}"',
+        "-c",
+        skill_override(caveman, ponytail, use_caveman, use_ponytail),
+        "--model",
+        args.model,
+        "--cd",
+        str(snapshot),
+        "--output-last-message",
+        str(final_message),
+        "-",
+    ]
+    started = time.monotonic()
+    exit_code = 124
+    timed_out = False
+    with events.open("w", encoding="utf-8") as stdout, errors.open("w", encoding="utf-8") as stderr:
+        try:
+            result = run(
+                command,
+                input=prompt_for(task, directive),
+                text=True,
+                stdout=stdout,
+                stderr=stderr,
+                timeout=args.timeout,
+            )
+            exit_code = result.returncode
+        except subprocess.TimeoutExpired:
+            timed_out = True
+    elapsed = round(time.monotonic() - started, 3)
+
+    metrics = diff_metrics(snapshot, baseline)
+    patch = checked(["git", "-C", str(snapshot), "diff", "--binary", baseline]).stdout
+    (run_dir / "changes.patch").write_text(patch, encoding="utf-8")
+    inject_evaluators(task, manifest_dir, snapshot)
+    verifier_passed, verifier_results = verify(task, snapshot, run_dir / "verify.log")
+    tool_calls, usage = parse_events(events)
+
+    record: dict[str, object] = {
+        "task": task["name"],
+        "profile": profile,
+        "agent_exit_code": exit_code,
+        "timed_out": timed_out,
+        "verifier_passed": verifier_passed,
+        "elapsed_seconds": elapsed,
+        "tool_calls": tool_calls,
+        "usage": usage,
+        "verification": verifier_results,
+        **metrics,
+    }
+    (run_dir / "result.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def load_manifest(path: Path) -> list[dict[str, object]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    tasks = data.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise BenchmarkError("manifest must contain a non-empty tasks array")
+    required = {"name", "repo", "base", "prompt", "evaluators", "verify"}
+    for task in tasks:
+        missing = required - set(task)
+        if missing:
+            raise BenchmarkError(f"task is missing fields: {', '.join(sorted(missing))}")
+    return tasks
+
+
+def write_summary(output: Path, records: list[dict[str, object]], metadata: dict[str, object]) -> None:
+    records.sort(key=lambda item: (str(item["task"]), str(item["profile"])))
+    (output / "results.json").write_text(
+        json.dumps({"metadata": metadata, "results": records}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    fields = [
+        "task",
+        "profile",
+        "verifier_passed",
+        "agent_exit_code",
+        "timed_out",
+        "files_changed",
+        "added_lines",
+        "deleted_lines",
+        "tool_calls",
+        "elapsed_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    ]
+    with (output / "summary.csv").open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for record in records:
+            flat = dict(record)
+            flat.update(record.get("usage", {}))
+            writer.writerow({field: flat.get(field, "") for field in fields})
+
+
+def arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("manifest", type=Path, help="JSON task manifest")
+    parser.add_argument("--output", type=Path, help="result directory")
+    parser.add_argument("--model", default="gpt-5.6-sol")
+    parser.add_argument("--reasoning", default="medium")
+    parser.add_argument("--codex", default="codex")
+    parser.add_argument("--jobs", type=int, default=1)
+    parser.add_argument("--timeout", type=int, default=1800, help="seconds per run")
+    parser.add_argument("--seed", type=int, default=20260921)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = arguments()
+    manifest = args.manifest.resolve()
+    tasks = load_manifest(manifest)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    output = (args.output or Path.home() / ".cache/codex-skill-benchmarks" / timestamp).resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    caveman, ponytail = skill_paths()
+
+    jobs = [(task, profile) for task in tasks for profile in PROFILES]
+    random.Random(args.seed).shuffle(jobs)
+    metadata = {
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "model": args.model,
+        "reasoning": args.reasoning,
+        "seed": args.seed,
+        "caveman": str(caveman),
+        "ponytail": str(ponytail),
+        "manifest": str(manifest),
+    }
+    records: list[dict[str, object]] = []
+    print(f"Running {len(jobs)} benchmark arms in {output}", flush=True)
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as executor:
+        futures = {
+            executor.submit(
+                benchmark_run,
+                task,
+                profile,
+                args,
+                manifest.parent,
+                output,
+                caveman,
+                ponytail,
+            ): (task["name"], profile)
+            for task, profile in jobs
+        }
+        for future in as_completed(futures):
+            task_name, profile = futures[future]
+            try:
+                record = future.result()
+            except Exception as error:
+                record = {"task": task_name, "profile": profile, "error": str(error)}
+            records.append(record)
+            state = "PASS" if record.get("verifier_passed") else "FAIL"
+            print(f"{state} {task_name}/{profile}", flush=True)
+            write_summary(output, records, metadata)
+
+    failed = sum(not record.get("verifier_passed", False) for record in records)
+    print(f"Complete: {len(records) - failed} passed, {failed} failed")
+    print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except BenchmarkError as error:
+        print(f"benchmark-codex-skills: {error}", file=sys.stderr)
+        raise SystemExit(1)

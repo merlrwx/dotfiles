@@ -5,5 +5,9 @@ alacritty/**
 archive_*/**
 **/archive_*/**
 
+# Source-only project files.
+docs/**
+tests/**
+
 # Host-specific output layouts stay local to each machine.
 .config/sway/config.d/10-desktop-outputs.conf

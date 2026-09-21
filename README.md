@@ -69,3 +69,12 @@ chezmoi diff
 chezmoi cd
 git status
 ```
+
+## Autonomous Codex goals
+
+The Codex setup includes an opt-in autonomous goal loop built from a small
+repository contract, fixed verification, and the native `Stop` hook. It supports
+both reviewed goals produced after Grill Me and clear goals started immediately.
+
+See [docs/autonomous-goals.md](docs/autonomous-goals.md) for setup, permissions,
+Git workflows, interruption, recovery, and skill benchmarking.

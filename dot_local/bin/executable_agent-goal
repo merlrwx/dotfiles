@@ -1,0 +1,356 @@
+#!/usr/bin/env python3
+"""Manage the small, repo-local state used by autonomous Codex goals."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+
+STATE_FILES = (
+    "ACTIVE",
+    "BLOCKED.md",
+    "COMPLETE",
+    "GOAL.md",
+    "PAUSE",
+    "PROGRESS.md",
+    "VERIFY",
+)
+
+
+class GoalError(RuntimeError):
+    pass
+
+
+def now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if check and result.returncode:
+        raise GoalError(result.stderr.strip() or "Git command failed")
+    return result
+
+
+def repo_root(cwd: str | Path | None = None, *, required: bool = True) -> Path | None:
+    here = Path(cwd or os.getcwd()).resolve()
+    result = git(here, "rev-parse", "--show-toplevel", check=False)
+    if result.returncode:
+        if required:
+            raise GoalError("agent-goal must run inside a Git repository")
+        return None
+    return Path(result.stdout.strip()).resolve()
+
+
+def state_dir(root: Path) -> Path:
+    return root / ".agent"
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def ensure_local_exclude(root: Path) -> None:
+    result = git(root, "rev-parse", "--git-path", "info/exclude")
+    exclude = Path(result.stdout.strip())
+    if not exclude.is_absolute():
+        exclude = root / exclude
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    pattern = "/.agent/"
+    if any(line.strip() == pattern for line in current.splitlines()):
+        return
+    separator = "" if not current or current.endswith("\n") else "\n"
+    with exclude.open("a", encoding="utf-8") as handle:
+        handle.write(f"{separator}# Codex autonomous goal runtime state\n{pattern}\n")
+
+
+def confined_path(root: Path, value: str) -> tuple[Path, str]:
+    candidate = Path(value)
+    path = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    try:
+        relative = path.relative_to(root)
+    except ValueError as error:
+        raise GoalError("the verifier must be inside the repository") from error
+    return path, str(relative)
+
+
+def load_active(root: Path) -> dict[str, object]:
+    active = state_dir(root) / "ACTIVE"
+    if not active.is_file():
+        raise GoalError("no autonomous goal is active")
+    try:
+        data = json.loads(active.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise GoalError(".agent/ACTIVE is invalid") from error
+    if data.get("version") != 1 or not isinstance(data.get("verifier"), str):
+        raise GoalError(".agent/ACTIVE has an unsupported format")
+    return data
+
+
+def command_start(args: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    directory = state_dir(root)
+    ensure_local_exclude(root)
+
+    goal = directory / "GOAL.md"
+    if not goal.is_file() or not goal.read_text(encoding="utf-8").strip():
+        raise GoalError("create a non-empty .agent/GOAL.md before starting")
+    if (directory / "ACTIVE").exists():
+        raise GoalError("a goal is already active")
+    stale = [name for name in ("BLOCKED.md", "COMPLETE", "PAUSE") if (directory / name).exists()]
+    if stale:
+        raise GoalError(f"clear previous goal state first: {', '.join(stale)}")
+
+    verifier, verifier_name = confined_path(root, args.verify)
+    if not verifier.is_file() or not os.access(verifier, os.X_OK):
+        raise GoalError(f"verifier is missing or not executable: {verifier_name}")
+
+    changes = git(root, "status", "--porcelain").stdout.strip()
+    if changes and not args.allow_dirty:
+        raise GoalError("worktree is not clean; commit/stash it or pass --allow-dirty deliberately")
+
+    directory.mkdir(parents=True, exist_ok=True)
+    active = {
+        "version": 1,
+        "started_at": now(),
+        "verifier": verifier_name,
+        "verifier_sha256": sha256(verifier),
+    }
+    write_text(directory / "ACTIVE", json.dumps(active, indent=2) + "\n")
+    if not (directory / "PROGRESS.md").exists():
+        write_text(
+            directory / "PROGRESS.md",
+            "# Current\n\nNot started.\n\n# Completed\n\n- None yet.\n\n# Next\n\nRead GOAL.md and begin.\n",
+        )
+    print(f"Active goal started in {root}")
+    print(f"Verifier: {verifier_name}")
+    return 0
+
+
+def command_status(_: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    directory = state_dir(root)
+    if (directory / "ACTIVE").is_file():
+        active = load_active(root)
+        if (directory / "BLOCKED.md").exists():
+            label = "blocked"
+        elif (directory / "PAUSE").exists():
+            label = "paused"
+        else:
+            label = "active"
+        print(f"Status: {label}")
+        print(f"Verifier: {active['verifier']}")
+    elif (directory / "COMPLETE").exists():
+        print("Status: complete")
+    else:
+        print("Status: inactive")
+    return 0
+
+
+def command_complete(_: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    directory = state_dir(root)
+    active = load_active(root)
+    if (directory / "PAUSE").exists() or (directory / "BLOCKED.md").exists():
+        raise GoalError("resume the goal before completing it")
+
+    verifier, verifier_name = confined_path(root, str(active["verifier"]))
+    if not verifier.is_file():
+        raise GoalError(f"verifier disappeared: {verifier_name}")
+    if sha256(verifier) != active.get("verifier_sha256"):
+        raise GoalError("verifier changed after activation; completion refused")
+
+    print(f"Running {verifier_name}...", flush=True)
+    result = subprocess.run([str(verifier)], cwd=root, check=False)
+    if result.returncode:
+        raise GoalError(f"verification failed with exit code {result.returncode}")
+
+    head = git(root, "rev-parse", "--short", "HEAD", check=False).stdout.strip()
+    write_text(
+        directory / "COMPLETE",
+        f"completed_at: {now()}\nverifier: {verifier_name}\nhead: {head or 'unknown'}\n",
+    )
+    (directory / "ACTIVE").unlink()
+    print("Goal complete; verification passed.")
+    return 0
+
+
+def command_block(args: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    load_active(root)
+    write_text(
+        state_dir(root) / "BLOCKED.md",
+        "# Blocked\n\n"
+        f"## External dependency\n\n{args.reason}\n\n"
+        f"## Evidence\n\n{args.evidence}\n\n"
+        f"## Attempted alternatives\n\n{args.attempted}\n\n"
+        f"## To unblock\n\n{args.unblock}\n",
+    )
+    print("Goal marked blocked with recovery details.")
+    return 0
+
+
+def command_pause(args: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    load_active(root)
+    if not sys.stdin.isatty() and not args.force:
+        raise GoalError("pause is a manual escape hatch; run it from a terminal")
+    write_text(state_dir(root) / "PAUSE", f"paused_at: {now()}\nreason: {args.reason}\n")
+    print("Goal paused. Run 'agent-goal resume' to continue.")
+    return 0
+
+
+def command_resume(_: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    load_active(root)
+    removed = False
+    for name in ("BLOCKED.md", "PAUSE"):
+        marker = state_dir(root) / name
+        if marker.exists():
+            marker.unlink()
+            removed = True
+    if not removed:
+        raise GoalError("goal is already active")
+    print("Goal resumed.")
+    return 0
+
+
+def command_clear(args: argparse.Namespace) -> int:
+    root = repo_root()
+    assert root is not None
+    directory = state_dir(root)
+    if not args.force:
+        if not sys.stdin.isatty():
+            raise GoalError("refusing to clear state non-interactively without --force")
+        answer = input("Remove current .agent goal state? [y/N] ").strip().lower()
+        if answer not in {"y", "yes"}:
+            print("Nothing removed.")
+            return 0
+    for name in STATE_FILES:
+        path = directory / name
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+    try:
+        directory.rmdir()
+    except OSError:
+        pass
+    print("Current goal state cleared.")
+    return 0
+
+
+def command_hook_stop(_: argparse.Namespace) -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        print(json.dumps({"systemMessage": "agent-goal Stop hook received invalid JSON"}))
+        return 0
+
+    root = repo_root(payload.get("cwd") or os.getcwd(), required=False)
+    if root is None:
+        print("{}")
+        return 0
+    directory = state_dir(root)
+    if not (directory / "ACTIVE").is_file():
+        print("{}")
+        return 0
+    try:
+        load_active(root)
+    except GoalError as error:
+        print(json.dumps({"systemMessage": f"agent-goal Stop hook disabled: {error}"}))
+        return 0
+    if any((directory / name).exists() for name in ("BLOCKED.md", "COMPLETE", "PAUSE")):
+        print("{}")
+        return 0
+
+    reason = (
+        "The repository's autonomous goal is still active. Read .agent/GOAL.md and "
+        ".agent/PROGRESS.md, choose the next useful action, implement it, verify it, "
+        "and rewrite PROGRESS.md concisely. Do not stop because an approach or test "
+        "failed. When every acceptance criterion is satisfied, run 'agent-goal complete'. "
+        "Only for a genuine unavailable external dependency, record the evidence and "
+        "recovery action with 'agent-goal block'."
+    )
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    command = argparse.ArgumentParser(prog="agent-goal", description=__doc__)
+    subcommands = command.add_subparsers(dest="command", required=True)
+
+    start = subcommands.add_parser("start", help="activate the prepared goal")
+    start.add_argument("--verify", default="scripts/verify", metavar="PATH")
+    start.add_argument("--allow-dirty", action="store_true")
+    start.set_defaults(handler=command_start)
+
+    status = subcommands.add_parser("status", help="show the current lifecycle state")
+    status.set_defaults(handler=command_status)
+
+    complete = subcommands.add_parser("complete", help="verify and complete the goal")
+    complete.set_defaults(handler=command_complete)
+
+    blocked = subcommands.add_parser("block", help="record a genuine external blocker")
+    blocked.add_argument("--reason", required=True)
+    blocked.add_argument("--evidence", required=True)
+    blocked.add_argument("--attempted", required=True)
+    blocked.add_argument("--unblock", required=True)
+    blocked.set_defaults(handler=command_block)
+
+    pause = subcommands.add_parser("pause", help="manually pause the active goal")
+    pause.add_argument("--reason", default="manual pause")
+    pause.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    pause.set_defaults(handler=command_pause)
+
+    resume = subcommands.add_parser("resume", help="remove pause or blocker state")
+    resume.set_defaults(handler=command_resume)
+
+    clear = subcommands.add_parser("clear", help="remove the current goal state")
+    clear.add_argument("--force", action="store_true")
+    clear.set_defaults(handler=command_clear)
+
+    hook = subcommands.add_parser("hook-stop", help=argparse.SUPPRESS)
+    hook.set_defaults(handler=command_hook_stop)
+    return command
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        return args.handler(args)
+    except GoalError as error:
+        print(f"agent-goal: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

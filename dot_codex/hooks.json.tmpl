@@ -10,6 +10,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "\"{{ .chezmoi.homeDir }}/.local/bin/agent-goal\" hook-stop",
+            "statusMessage": "Checking autonomous goal state",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
     ]
   }
 }
