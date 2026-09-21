@@ -30,6 +30,9 @@ The first apply may ask for `sudo` so it can install the Fedora packages.
 - Sway configuration and portable key bindings
 - Waybar configuration and styling
 - Rofi configuration and Gruvbox theme
+- Gruvbox GTK and icon themes, system dark mode, and JetBrains Mono UI font
+- Thunar, its stable preferences and custom actions, and the directory file association
+- Swaylock wallpaper configuration and Swayidle behavior
 - Alacritty, Bash, Vim, tmux, Starship, and mise
 - Herdr preferences and its Codex session integration
 - Codex model preferences, MCP endpoints, portable project trust, and skills
@@ -41,7 +44,13 @@ rules, and machine identity are deliberately not tracked. On a new machine,
 run `codex` once and sign in after `chezmoi apply` finishes.
 
 Codex loads the global Caveman skill on demand and automatically follows the
-Conventional Commits skill whenever it creates or amends a Git commit.
+Conventional Commits skill whenever it creates or amends a Git commit. Chezmoi
+also installs and enables the native `grill-me`, Ponytail, and `teach` plugins.
+Restart Codex after the first apply so it discovers newly installed extensions.
+
+Launching Herdr through the shell or desktop menu first updates the standalone
+Codex and Herdr installs. If an update is unavailable, the launcher reports a
+warning and opens the currently installed version.
 
 Machine-specific output settings are deliberately not tracked. Put monitor and
 workspace assignments in:

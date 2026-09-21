@@ -5,7 +5,8 @@ alacritty/**
 archive_*/**
 **/archive_*/**
 
-# Source-only project files.
+# Source-only archives consumed by chezmoi scripts.
+assets/**
 docs/**
 tests/**
 

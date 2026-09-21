@@ -1,0 +1,9 @@
+[Default Applications]
+inode/directory=thunar.desktop
+application/pdf=org.mozilla.firefox.desktop
+application/x-zerosize=sublime_text.desktop
+
+[Added Associations]
+inode/directory=thunar.desktop;
+application/pdf=org.mozilla.firefox.desktop;
+application/x-zerosize=sublime_text.desktop;

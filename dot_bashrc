@@ -48,6 +48,30 @@ alias gl='git log --oneline --graph --decorate --all'
 alias eb='vim ~/.bashrc'
 alias sbr='source ~/.bashrc'
 
+# Herdr restores Codex sessions with `codex resume <session-id>`.
+# Keep normal Codex launches unchanged, but make restored sessions autonomous.
+codex() {
+    if [[ "$1" == "resume" ]]; then
+        local arg
+        for arg in "$@"; do
+            if [[ "$arg" == "--yolo" ]]; then
+                command codex "$@"
+                return
+            fi
+        done
+        command codex "$@" --yolo
+        return
+    fi
+
+    command codex "$@"
+}
+
+# Keep the terminal launcher in sync before opening Herdr. The same launcher is
+# used by the desktop entry below, so Rofi and shell launches behave alike.
+herdr() {
+    herdr-launch "$@"
+}
+
 
 # Golang environment variables
 export GOPATH=$HOME/go
@@ -152,3 +176,4 @@ if command -v docker >/dev/null 2>&1; then
     fi
   }
 fi
+. "$HOME/.cargo/env"

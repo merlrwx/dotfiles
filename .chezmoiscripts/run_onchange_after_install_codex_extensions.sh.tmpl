@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Re-run whenever the declarative extension manifest changes.
+# Codex plugins:
+# - engineering-suite-grill-me@openai-curated-remote
+# - engineering-suite-ponytail@openai-curated-remote
+# - engineering-suite-teach@openai-curated-remote
+
+if ! command -v codex >/dev/null 2>&1; then
+    printf 'Codex is not installed; skipping Codex extensions.\n' >&2
+    exit 0
+fi
+
+plugins=(
+    engineering-suite-grill-me@openai-curated-remote
+    engineering-suite-ponytail@openai-curated-remote
+    engineering-suite-teach@openai-curated-remote
+)
+
+plugin_list="$(codex plugin list)"
+
+for plugin in "${plugins[@]}"; do
+    if awk -v plugin="$plugin" \
+        '$1 == plugin && /installed, enabled/ { found = 1 } END { exit !found }' \
+        <<<"$plugin_list"; then
+        continue
+    fi
+
+    codex plugin add "$plugin" --json
+done

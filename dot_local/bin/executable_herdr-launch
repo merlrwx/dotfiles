@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+update_codex() {
+    if ! command -v codex >/dev/null 2>&1; then
+        return 0
+    fi
+
+    printf 'Updating Codex...\n' >&2
+    if ! curl -fsSL https://chatgpt.com/codex/install.sh | sh; then
+        printf 'Warning: Codex update failed; continuing with the installed version.\n' >&2
+    fi
+}
+
+update_herdr() {
+    if ! command -v herdr >/dev/null 2>&1; then
+        printf 'Error: Herdr is not installed.\n' >&2
+        return 1
+    fi
+
+    printf 'Updating Herdr...\n' >&2
+    if ! herdr update; then
+        printf 'Warning: Herdr update failed; continuing with the installed version.\n' >&2
+    fi
+}
+
+update_codex
+update_herdr || exit 1
+
+# `exec` performs command lookup without expanding the interactive shell
+# function that points `herdr` here.
+exec herdr "$@"

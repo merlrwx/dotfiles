@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Herdr
+Comment=Terminal multiplexer for coding agents
+Exec=herdr-launch
+Terminal=true
+Categories=Development;

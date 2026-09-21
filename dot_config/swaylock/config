@@ -1,0 +1,3 @@
+# Match the Sway desktop background configured in ~/.config/sway/config.
+image=$HOME/Pictures/wallpaper.jpg
+scaling=fill

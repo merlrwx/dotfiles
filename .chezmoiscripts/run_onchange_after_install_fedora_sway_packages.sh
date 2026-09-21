@@ -11,9 +11,13 @@ packages=(
     blueman
     brightnessctl
     dunst
+    exo
     fontawesome-6-free-fonts
     grim
     grimshot
+    gtk-murrine-engine
+    gvfs
+    gvfs-smb
     jetbrains-mono-fonts-all
     libnotify
     lxqt-policykit
@@ -27,11 +31,26 @@ packages=(
     swaybg
     swayidle
     swaylock
+    thunar
+    thunar-archive-plugin
+    tumbler
     waybar
     wl-clipboard
+    xarchiver
     xdg-desktop-portal
     xdg-desktop-portal-gtk
     xdg-desktop-portal-wlr
 )
 
-sudo dnf install -y "${packages[@]}"
+missing_packages=()
+for package in "${packages[@]}"; do
+    if ! rpm -q --whatprovides "$package" >/dev/null 2>&1; then
+        missing_packages+=("$package")
+    fi
+done
+
+if ((${#missing_packages[@]} == 0)); then
+    exit 0
+fi
+
+sudo dnf install -y "${missing_packages[@]}"
