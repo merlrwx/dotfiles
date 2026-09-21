@@ -237,6 +237,39 @@ changing the default profile.
 Use `benchmark-codex-skills --help` for the reusable runner. Record later pilots
 alongside their model, reasoning level, task mix, and verifier results.
 
+The runner takes a JSON manifest. Evaluators are copied into the disposable
+snapshot only after Codex finishes, then the listed commands run from the
+snapshot root. `~` and environment variables are expanded; relative evaluator
+sources are resolved beside the manifest.
+
+```json
+{
+  "tasks": [
+    {
+      "name": "focused-fix",
+      "repo": "~/jd/path/to/repository",
+      "base": "parent-commit-sha",
+      "prompt": "Implement the observable behavior without external changes.",
+      "evaluators": [
+        {
+          "source": "evaluators/test_fix.py",
+          "destination": ".agent/evaluators/test_fix.py"
+        }
+      ],
+      "verify": [
+        ["pytest", "-q", ".agent/evaluators/test_fix.py"]
+      ]
+    }
+  ]
+}
+```
+
+Run it with an explicit output directory when the artifacts should be retained:
+
+```bash
+benchmark-codex-skills tasks.json --jobs 4 --output ~/.cache/my-pilot
+```
+
 ### Initial pilot — 2026-09-21
 
 The pilot used `gpt-5.6-sol` at medium reasoning on one shell/bootstrap task,
