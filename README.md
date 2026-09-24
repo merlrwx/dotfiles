@@ -1,8 +1,9 @@
-# Fedora Sway Dotfiles
+# Fedora Sway and CLI Dotfiles
 
-Portable configuration for Fedora Sway, Bash, Vim, tmux, Alacritty, Waybar,
-Rofi, Starship, mise, Herdr, and Codex. Chezmoi installs the configuration and
-the required Fedora desktop packages.
+Portable configuration for a Fedora Sway desktop or a headless CLI host,
+including Bash, Vim, tmux, Starship, mise, Herdr, and Codex. Chezmoi asks which
+profile to use on first setup and installs Fedora desktop packages only for the
+`fedora-sway` profile.
 
 ## Fresh Fedora setup
 
@@ -25,9 +26,37 @@ cd "$PUBLIC_REPOS/dotfiles"
 
 The first apply may ask for `sudo` so it can install the Fedora packages.
 
+## Ubuntu and Amazon Linux 2023 CLI setup
+
+Install Git and curl first so chezmoi can download and clone the source:
+
+Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl git
+```
+
+Amazon Linux 2023:
+
+```bash
+sudo dnf install -y curl git
+```
+
+Then initialize the same repository and choose the `cli` profile when prompted:
+
+```bash
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/merlrwx/dotfiles.git
+```
+
+The CLI profile manages Bash, Vim, tmux, mise, Starship, Herdr, and Codex
+configuration. It skips Sway, Waybar, Rofi, GTK, Thunar, Alacritty, wallpaper,
+desktop entries, and Fedora desktop package/theme installation. The profile is
+stored in the local chezmoi config, so later applies do not ask again.
+
 ## What is managed
 
-- Sway configuration and portable key bindings
+- Sway configuration and portable key bindings (`fedora-sway` profile)
 - Waybar configuration and styling
 - Rofi configuration and Gruvbox theme
 - Gruvbox GTK and icon themes, system dark mode, and JetBrains Mono UI font
@@ -37,11 +66,14 @@ The first apply may ask for `sudo` so it can install the Fedora packages.
 - Herdr preferences and its Codex session integration
 - Codex model preferences, MCP endpoints, portable project trust, and skills
 - Screenshot helper and wallpaper
-- Fedora packages required by the desktop configuration
+- Fedora packages required by the desktop configuration (`fedora-sway` profile)
 
 Codex authentication, conversations, memories, databases, caches, generated
 rules, and machine identity are deliberately not tracked. On a new machine,
 run `codex` once and sign in after `chezmoi apply` finishes.
+
+For authenticated homelab tools, follow [Homelab MCP with Codex](docs/homelab-mcp.md),
+including laptop access over Tailscale and how to interpret HTTP 401 responses.
 
 Codex loads the global Caveman skill on demand and automatically follows the
 Conventional Commits skill whenever it creates or amends a Git commit. Chezmoi

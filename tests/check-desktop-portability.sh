@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-managed="$(chezmoi --source "$repo_root" managed)"
+managed="$(chezmoi --source "$repo_root" --override-data '{"profile":"fedora-sway"}' managed)"
 
 required_paths=(
     .config/Thunar/uca.xml
@@ -22,7 +22,7 @@ for path in "${required_paths[@]}"; do
     fi
 done
 
-package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_fedora_sway_packages.sh"
+package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_fedora_sway_packages.sh.tmpl"
 for package in thunar thunar-archive-plugin tumbler gvfs gvfs-smb exo xarchiver gtk-murrine-engine; do
     if ! grep -Eq "^[[:space:]]+${package}$" "$package_script"; then
         printf 'Missing Fedora desktop package: %s\n' "$package" >&2

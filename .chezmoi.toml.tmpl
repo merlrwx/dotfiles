@@ -1,0 +1,10 @@
+{{- $defaultProfile := "cli" -}}
+{{- if and (eq .chezmoi.os "linux") (eq .chezmoi.osRelease.id "fedora") -}}
+{{- $defaultProfile = "fedora-sway" -}}
+{{- end -}}
+{{- $profile := promptChoiceOnce . "profile" "Choose a dotfiles profile" (list "fedora-sway" "cli") $defaultProfile -}}
+
+sourceDir = {{ .chezmoi.sourceDir | quote }}
+
+[data]
+    profile = {{ $profile | quote }}

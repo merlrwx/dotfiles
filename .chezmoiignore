@@ -12,3 +12,27 @@ tests/**
 
 # Host-specific output layouts stay local to each machine.
 .config/sway/config.d/10-desktop-outputs.conf
+
+{{- $detectedProfile := "cli" -}}
+{{- if and (eq .chezmoi.os "linux") (eq .chezmoi.osRelease.id "fedora") -}}
+{{- $detectedProfile = "fedora-sway" -}}
+{{- end -}}
+{{- $profile := get . "profile" | default $detectedProfile -}}
+{{- if ne $profile "fedora-sway" }}
+# Desktop configuration is only managed by the Fedora Sway profile.
+.config/Thunar/**
+.config/alacritty/**
+.config/gtk-3.0/**
+.config/gtk-4.0/**
+.config/mimeapps.list
+.config/rofi/**
+.config/sway/**
+.config/swaylock/**
+.config/waybar/**
+.config/xfce4/**
+.local/bin/sway-snip
+.local/share/applications/**
+.chezmoiscripts/install_fedora_sway_packages.sh
+.chezmoiscripts/zz_install_gruvbox_desktop.sh
+Pictures/wallpaper.jpg
+{{- end }}

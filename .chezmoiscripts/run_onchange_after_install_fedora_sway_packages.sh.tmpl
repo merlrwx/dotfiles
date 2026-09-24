@@ -1,8 +1,13 @@
+{{- $detectedProfile := "cli" -}}
+{{- if and (eq .chezmoi.os "linux") (eq .chezmoi.osRelease.id "fedora") -}}
+{{- $detectedProfile = "fedora-sway" -}}
+{{- end -}}
+{{- $profile := get . "profile" | default $detectedProfile -}}
 #!/usr/bin/env bash
 
 set -euo pipefail
 
-if [[ ! -f /etc/fedora-release ]]; then
+if [[ {{ $profile | quote }} != "fedora-sway" || ! -f /etc/fedora-release ]]; then
     exit 0
 fi
 
