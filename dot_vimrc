@@ -45,6 +45,7 @@ filetype plugin indent on
 filetype plugin on
 
 " Gruvbox Material Dark (medium contrast, material foreground)
+set background=dark
 if has('termguicolors')
   set termguicolors
 endif
