@@ -37,8 +37,8 @@ error_symbol = "[❯](#ea6962)"
 vimcmd_symbol = "[❮](#d3869b)"
 
 [git_branch]
-format = "[$branch]($style)"
-style = "#d8a657"
+format = "[│](#928374) [ $branch]($style)"
+style = "#a9b665"
 
 [git_status]
 format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#d3869b) ($ahead_behind$stashed)]($style)"
