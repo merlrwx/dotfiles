@@ -4,13 +4,13 @@ set -euo pipefail
 
 SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-if command -v chezmoi >/dev/null; then
+if command -v chezmoi >/dev/null 2>&1 && chezmoi --version >/dev/null 2>&1; then
     chezmoi init --apply --source "$SOURCE_DIR"
     exit 0
 fi
 
 if command -v mise >/dev/null; then
-    mise exec chezmoi -- chezmoi init --apply --source "$SOURCE_DIR"
+    mise exec chezmoi@latest -- chezmoi init --apply --source "$SOURCE_DIR"
     exit 0
 fi
 

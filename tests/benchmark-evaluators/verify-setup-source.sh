@@ -13,7 +13,7 @@ chmod +x "$source_dir/setup"
 assert_apply_args() {
     local log=$1
     mapfile -t actual < "$log"
-    if [[ ${actual[0]:-} == exec && ${actual[1]:-} == chezmoi && ${actual[2]:-} == -- && ${actual[3]:-} == chezmoi ]]; then
+    if [[ ${actual[0]:-} == exec && ${actual[1]:-} == chezmoi@latest && ${actual[2]:-} == -- && ${actual[3]:-} == chezmoi ]]; then
         actual=("${actual[@]:4}")
     elif [[ ${actual[0]:-} == exec && ${actual[1]:-} == -- && ${actual[2]:-} == chezmoi ]]; then
         actual=("${actual[@]:3}")
@@ -43,12 +43,21 @@ assert_apply_args "$case_dir/call"
 
 case_dir="$test_root/mise"
 mkdir -p "$case_dir/bin"
-printf '#!/bin/bash\nif [[ ${1:-} == which ]]; then printf "%%s\\n" "$MANAGED_CHEZMOI"; exit 0; fi\nprintf "%%s\\n" "$@" > "$CALL_LOG"\n' > "$case_dir/bin/mise"
-printf '#!/bin/bash\nprintf "%%s\\n" "$@" > "$CALL_LOG"\n' > "$case_dir/managed-chezmoi"
+printf '#!/bin/bash\n[[ ${1:-} == exec && ${2:-} == chezmoi@latest ]] || exit 93\nprintf "%%s\\n" "$@" > "$CALL_LOG"\n' > "$case_dir/bin/mise"
 printf '#!/bin/bash\nexit 92\n' > "$case_dir/bin/curl"
 ln -s /usr/bin/dirname "$case_dir/bin/dirname"
-chmod +x "$case_dir/bin/mise" "$case_dir/bin/curl" "$case_dir/managed-chezmoi"
-(cd "$source_dir" && CALL_LOG="$case_dir/call" MANAGED_CHEZMOI="$case_dir/managed-chezmoi" PATH="$case_dir/bin" ./setup)
+chmod +x "$case_dir/bin/mise" "$case_dir/bin/curl"
+(cd "$source_dir" && CALL_LOG="$case_dir/call" PATH="$case_dir/bin" ./setup)
+assert_apply_args "$case_dir/call"
+
+case_dir="$test_root/mise-shim"
+mkdir -p "$case_dir/bin"
+printf '#!/bin/bash\nexit 91\n' > "$case_dir/bin/chezmoi"
+printf '#!/bin/bash\n[[ ${1:-} == exec && ${2:-} == chezmoi@latest ]] || exit 93\nprintf "%%s\\n" "$@" > "$CALL_LOG"\n' > "$case_dir/bin/mise"
+printf '#!/bin/bash\nexit 92\n' > "$case_dir/bin/curl"
+ln -s /usr/bin/dirname "$case_dir/bin/dirname"
+chmod +x "$case_dir/bin/chezmoi" "$case_dir/bin/mise" "$case_dir/bin/curl"
+(cd "$source_dir" && CALL_LOG="$case_dir/call" PATH="$case_dir/bin" ./setup)
 assert_apply_args "$case_dir/call"
 
 case_dir="$test_root/bootstrap"

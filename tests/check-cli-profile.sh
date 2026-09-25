@@ -93,4 +93,24 @@ if ! grep -Fq 'profile = "cli"' <<<"$generated_config"; then
     exit 1
 fi
 
+package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_packages.sh.tmpl"
+rendered_package_script="$(chezmoi --source "$repo_root" execute-template <"$package_script")"
+test_root="$(mktemp -d)"
+trap 'rm -rf -- "$test_root"' EXIT
+test_home="$test_root/home"
+test_bin="$test_root/bin"
+mkdir -p "$test_home/.config/mise" "$test_bin"
+: >"$test_home/.config/mise/config.toml"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$CALL_LOG"\n' >"$test_bin/mise"
+chmod +x "$test_bin/mise"
+call_log="$test_root/mise.log"
+env HOME="$test_home" PATH="$test_bin:/usr/bin:/bin" CALL_LOG="$call_log" \
+    bash -c "$rendered_package_script"
+expected_log="$test_root/expected-mise.log"
+printf 'trust %s\ninstall\n' "$test_home/.config/mise/config.toml" >"$expected_log"
+if ! diff -u "$expected_log" "$call_log"; then
+    printf 'Package installer did not find mise on PATH and trust the applied config.\n' >&2
+    exit 1
+fi
+
 printf 'CLI/Fedora Sway profile checks passed.\n'

@@ -4,7 +4,14 @@ set -euo pipefail
 
 # packages hash: {{ include "dot_config/mise/config.toml" | sha256sum }}
 
-MISE="$HOME/.local/bin/mise"
+if [ -x "$HOME/.local/bin/mise" ]; then
+    MISE="$HOME/.local/bin/mise"
+elif command -v mise >/dev/null 2>&1; then
+    MISE="$(command -v mise)"
+else
+    printf 'mise is required to install configured tools.\n' >&2
+    exit 1
+fi
 
 # Trust the source-side chezmoi copy, useful when editing inside `chezmoi cd`
 if [ -f "$HOME/.local/share/chezmoi/dot_config/mise/config.toml" ]; then
