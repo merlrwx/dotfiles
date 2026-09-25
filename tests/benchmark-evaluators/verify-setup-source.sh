@@ -20,10 +20,10 @@ assert_apply_args() {
     fi
 
     case "${actual[*]}" in
-        "init --apply --source $source_dir"|\
-        "apply --source $source_dir"|\
-        "--source $source_dir apply"|\
-        "-S $source_dir apply") return 0 ;;
+        "init --apply --source $source_dir --promptChoice Choose a dotfiles profile=cli"|\
+        "apply --source $source_dir --promptChoice Choose a dotfiles profile=cli"|\
+        "--source $source_dir apply --promptChoice Choose a dotfiles profile=cli"|\
+        "-S $source_dir apply --promptChoice Choose a dotfiles profile=cli") return 0 ;;
     esac
     printf 'unexpected chezmoi invocation:' >&2
     printf ' %q' "${actual[@]}" >&2

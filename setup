@@ -4,15 +4,23 @@ set -euo pipefail
 
 SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+run_chezmoi_init() {
+    local -a args=(init --apply --source "$SOURCE_DIR")
+    if [[ ! -t 0 ]]; then
+        args+=(--promptChoice 'Choose a dotfiles profile=cli')
+    fi
+    "$@" "${args[@]}"
+}
+
 if command -v chezmoi >/dev/null 2>&1 && chezmoi --version >/dev/null 2>&1; then
-    chezmoi init --apply --source "$SOURCE_DIR"
+    run_chezmoi_init chezmoi
     exit 0
 fi
 
 if command -v mise >/dev/null; then
-    mise exec chezmoi@latest -- chezmoi init --apply --source "$SOURCE_DIR"
+    run_chezmoi_init mise exec chezmoi@latest -- chezmoi
     exit 0
 fi
 
-sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply --source "$SOURCE_DIR"
+run_chezmoi_init sh -c "$(curl -fsLS get.chezmoi.io)" --
 exit 0
