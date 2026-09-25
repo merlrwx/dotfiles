@@ -113,4 +113,11 @@ if ! diff -u "$expected_log" "$call_log"; then
     exit 1
 fi
 
+bashrc_output="$(env HOME="$test_home" PATH=/usr/bin:/bin SSH_AUTH_SOCK=/dev/null \
+    bash --rcfile "$repo_root/dot_bashrc" -ic ':' 2>&1 || true)"
+if grep -Fq "$test_home/.cargo/env" <<<"$bashrc_output"; then
+    printf 'Bash startup tried to source missing ~/.cargo/env.\n' >&2
+    exit 1
+fi
+
 printf 'CLI/Fedora Sway profile checks passed.\n'
