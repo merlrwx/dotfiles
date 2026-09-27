@@ -30,6 +30,7 @@ export HISTFILESIZE=25000
 export HISTCONTROL=ignoreboth
 
 # Aliases
+alias v='vim'
 alias c='clear'
 alias e='exit'
 alias ..='cd ..'
