@@ -1,0 +1,7 @@
+[".config/yazi/flavors/gruvbox-material.yazi"]
+type = "archive"
+url = "https://github.com/matt-dong-123/gruvbox-material.yazi/archive/e0fd2d800aeb6adb680496b1a5ef125b901b7413.tar.gz"
+stripComponents = 1
+
+[".config/yazi/flavors/gruvbox-material.yazi".checksum]
+sha256 = "a95eab9161c480f6dd475501161b87d909c402e789371fa2fc6c074813a8f236"

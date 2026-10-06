@@ -24,7 +24,8 @@ cd "$PUBLIC_REPOS/dotfiles"
 ./setup
 ```
 
-The first apply may ask for `sudo` so it can install the Fedora packages.
+The first apply may ask for `sudo` to install CLI build prerequisites and, for
+the `fedora-sway` profile, Fedora desktop packages.
 
 ## Ubuntu and Amazon Linux 2023 CLI setup
 
@@ -49,10 +50,12 @@ Then initialize the same repository and choose the `cli` profile when prompted:
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/merlrwx/dotfiles.git
 ```
 
-The CLI profile manages Bash, Vim, tmux, mise, Starship, Herdr, and Codex
-configuration. It skips Sway, Waybar, Rofi, GTK, Thunar, Alacritty, wallpaper,
-desktop entries, and Fedora desktop package/theme installation. The profile is
-stored in the local chezmoi config, so later applies do not ask again.
+The CLI profile manages Bash, Vim, Neovim with LazyVim, Yazi, tmux, mise,
+Starship, Herdr, and Codex configuration. Neovim and Yazi use the same dark
+Gruvbox Material palette as Vim. It skips Sway, Waybar, Rofi, GTK, Thunar,
+Alacritty, wallpaper, desktop entries, and Fedora desktop package/theme
+installation. The profile is stored in the local chezmoi config, so later
+applies do not ask again.
 
 ## What is managed
 
@@ -62,7 +65,7 @@ stored in the local chezmoi config, so later applies do not ask again.
 - Gruvbox GTK and icon themes, system dark mode, and JetBrains Mono UI font
 - Thunar, its stable preferences and custom actions, and the directory file association
 - Swaylock wallpaper configuration and Swayidle behavior
-- Alacritty, Bash, Vim, tmux, Starship, and mise
+- Alacritty, Bash, Vim, LazyVim/Neovim, Yazi, tmux, Starship, and mise
 - Herdr preferences and its Codex session integration
 - Codex model preferences, MCP endpoints, portable project trust, and skills
 - Screenshot helper and wallpaper

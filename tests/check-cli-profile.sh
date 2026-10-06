@@ -20,6 +20,14 @@ shared_paths=(
     .vimrc
     .config/mise/config.toml
     .config/starship.toml
+    .config/nvim/init.lua
+    .config/nvim/lua/config/clipboard.lua
+    .config/nvim/lua/config/lazy.lua
+    .config/nvim/lua/config/options.lua
+    .config/nvim/lua/plugins/gruvbox_material.lua
+    .config/yazi/theme.toml
+    .config/yazi/yazi.toml
+    .config/yazi/flavors/gruvbox-material.yazi/flavor.toml
     .codex/config.toml
 )
 
@@ -113,10 +121,68 @@ if ! diff -u "$expected_log" "$call_log"; then
     exit 1
 fi
 
+cli_dependencies_script="$repo_root/.chezmoiscripts/run_onchange_after_install_cli_dependencies.sh.tmpl"
+rendered_cli_dependencies_script="$(chezmoi --source "$repo_root" execute-template <"$cli_dependencies_script")"
+if ! bash -n <<<"$rendered_cli_dependencies_script"; then
+    printf 'CLI dependency installer has invalid Bash syntax.\n' >&2
+    exit 1
+fi
+for tool in neovim yazi fd fzf lazygit ripgrep zoxide jq; do
+    if ! grep -Eq "^${tool} = \"latest\"$" "$repo_root/dot_config/mise/config.toml"; then
+        printf 'mise config is missing CLI tool: %s\n' "$tool" >&2
+        exit 1
+    fi
+done
+for package in file build-essential gcc make unzip; do
+    if ! grep -Fq "$package" "$cli_dependencies_script"; then
+        printf 'CLI dependency installer is missing system package: %s\n' "$package" >&2
+        exit 1
+    fi
+done
+for package in xclip wl-clipboard; do
+    if ! grep -Fq "$package" "$cli_dependencies_script"; then
+        printf 'CLI dependency installer is missing clipboard package: %s\n' "$package" >&2
+        exit 1
+    fi
+done
+grep -Fq 'powershell.exe' "$repo_root/dot_config/nvim/lua/config/clipboard.lua"
+grep -Fq 'vim.g.clipboard = "osc52"' "$repo_root/dot_config/nvim/lua/config/clipboard.lua"
+grep -Fq 'vim.opt.clipboard = "unnamedplus"' "$repo_root/dot_config/nvim/lua/config/options.lua"
+grep -Fq 'dark = "gruvbox-material"' "$repo_root/dot_config/yazi/theme.toml"
+grep -Fq 'vim.g.gruvbox_material_background = "medium"' \
+    "$repo_root/dot_config/nvim/lua/plugins/gruvbox_material.lua"
+grep -Fq 'vim.opt.background = "dark"' \
+    "$repo_root/dot_config/nvim/lua/plugins/gruvbox_material.lua"
+
 bashrc_output="$(env HOME="$test_home" PATH=/usr/bin:/bin SSH_AUTH_SOCK=/dev/null \
     bash --rcfile "$repo_root/dot_bashrc" -ic ':' 2>&1 || true)"
 if grep -Fq "$test_home/.cargo/env" <<<"$bashrc_output"; then
     printf 'Bash startup tried to source missing ~/.cargo/env.\n' >&2
+    exit 1
+fi
+
+browser_output="$(env HOME="$test_home" PATH="$test_bin:/usr/bin:/bin" \
+    SSH_AUTH_SOCK=/dev/null BROWSER=host-browser PS1= PROMPT_COMMAND=: \
+    bash --rcfile "$repo_root/dot_bashrc" -ic 'printf "%s\\n" "$BROWSER"' 2>/dev/null)"
+if [[ "$browser_output" != "host-browser" ]]; then
+    printf 'Bash startup overrode the host-provided browser opener: %s\n' "$browser_output" >&2
+    exit 1
+fi
+
+yazi_target="$test_home/Yazi destination"
+mkdir -p "$yazi_target"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'for arg in "$@"; do' \
+    '    [[ "$arg" == --cwd-file=* ]] && cwd_file="${arg#*=}"' \
+    'done' \
+    'printf "%s\\0" "$YAZI_TARGET" >"$cwd_file"' >"$test_bin/yazi"
+chmod +x "$test_bin/yazi"
+yazi_output="$(env HOME="$test_home" PATH="$test_bin:/usr/bin:/bin" \
+    SSH_AUTH_SOCK=/dev/null YAZI_TARGET="$yazi_target" PS1= PROMPT_COMMAND=: \
+    bash --rcfile "$repo_root/dot_bashrc" -ic 'y; pwd' 2>/dev/null)"
+if [[ "$(tail -n 1 <<<"$yazi_output")" != "$yazi_target" ]]; then
+    printf 'Yazi shell wrapper did not change to the selected directory.\n' >&2
     exit 1
 fi
 

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+[[ -r /etc/os-release ]] || exit 0
+# shellcheck disable=SC1091
+source /etc/os-release
+
+case "${ID:-}" in
+    ubuntu|debian)
+        packages=(file build-essential unzip xclip wl-clipboard)
+        package_installed() {
+            [[ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null || true)" == installed ]]
+        }
+        install_packages() {
+            sudo apt-get update
+            sudo apt-get install -y "${missing_packages[@]}"
+        }
+        ;;
+    fedora)
+        packages=(file gcc make unzip xclip wl-clipboard)
+        package_installed() { rpm -q "$1" >/dev/null 2>&1; }
+        install_packages() { sudo dnf install -y "${missing_packages[@]}"; }
+        ;;
+    amzn|rhel|centos)
+        packages=(file gcc make unzip)
+        package_installed() { rpm -q "$1" >/dev/null 2>&1; }
+        install_packages() { sudo dnf install -y "${missing_packages[@]}"; }
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+missing_packages=()
+for package in "${packages[@]}"; do
+    package_installed "$package" || missing_packages+=("$package")
+done
+
+((${#missing_packages[@]} == 0)) || install_packages

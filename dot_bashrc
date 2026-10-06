@@ -12,9 +12,10 @@ set -o vi
 bind -x '"\C-l":clear'
 
 # Basic editor/browser
-export EDITOR=vim
-export VISUAL=vim
-export BROWSER=firefox
+export EDITOR=nvim
+export VISUAL=nvim
+# Preserve a host-provided opener in remote environments (for example, VS Code
+# Dev Containers); a container-local browser usually cannot open the host UI.
 
 # Useful folders
 export REPOS="$HOME/jd/20-29-code/repos"
@@ -30,7 +31,7 @@ export HISTFILESIZE=25000
 export HISTCONTROL=ignoreboth
 
 # Aliases
-alias v='vim'
+alias v='nvim'
 alias c='clear'
 alias e='exit'
 alias ..='cd ..'
@@ -48,6 +49,16 @@ alias gl='git log --oneline --graph --decorate --all'
 
 alias eb='vim ~/.bashrc'
 alias sbr='source ~/.bashrc'
+
+# Yazi's shell wrapper changes to the selected directory on quit.
+y() {
+    local tmp cwd
+    tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+    command yazi "$@" --cwd-file="$tmp"
+    IFS= read -r -d '' cwd < "$tmp"
+    [[ "$cwd" != "$PWD" && -d "$cwd" ]] && builtin cd -- "$cwd"
+    command rm -f -- "$tmp"
+}
 
 # Herdr restores Codex sessions with `codex resume <session-id>`.
 # Keep normal Codex launches unchanged, but make restored sessions autonomous.
