@@ -6,6 +6,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 installer="$repo_root/.chezmoiscripts/run_onchange_after_install_codex_extensions.sh.tmpl"
 config="$repo_root/dot_codex/private_config.toml.tmpl"
 externals="$repo_root/.chezmoiexternals/codex-skills.toml"
+instructions="$repo_root/dot_codex/AGENTS.md"
 
 assert_contains() {
     local file=$1
@@ -18,6 +19,9 @@ assert_contains() {
 }
 
 assert_contains "$externals" '.codex/skills/caveman/SKILL.md'
+assert_contains "$instructions" '## Teach workspaces'
+assert_contains "$instructions" 'outside the Git worktree'
+assert_contains "$instructions" 'even if ignored'
 for plugin in grill-me ponytail teach; do
     selector="engineering-suite-$plugin@openai-curated-remote"
     assert_contains "$installer" "$selector"
