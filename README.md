@@ -67,7 +67,7 @@ applies do not ask again.
 - Sway configuration and portable key bindings (`fedora-sway` profile)
 - Waybar configuration and styling
 - Rofi configuration and Gruvbox theme
-- Gruvbox GTK and icon themes, system dark mode, and JetBrains Mono UI font
+- Gruvbox GTK and icon themes, system dark mode, and Ioskeley Mono UI font
 - Thunar, its stable preferences and custom actions, and the directory file association
 - Swaylock wallpaper configuration and Swayidle behavior
 - Alacritty, Bash, Vim, LazyVim/Neovim, Yazi, tmux, Starship, and mise

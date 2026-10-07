@@ -234,7 +234,7 @@ include '$(/usr/libexec/sway/layered-include "/usr/share/sway/config.d/*.conf" "
 # Custom
 default_border none
 default_floating_border none
-font pango:JetBrains Mono 10
+font pango:IoskeleyMonoTerm Nerd Font Mono 10
 titlebar_padding 1
 titlebar_border_thickness 0
 

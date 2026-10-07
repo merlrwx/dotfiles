@@ -2,19 +2,19 @@
 size = 17
 
 [font.normal]
-family = "JetBrainsMono Nerd Font"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Regular"
 
 [font.bold]
-family = "JetBrainsMono Nerd Font"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Bold"
 
 [font.italic]
-family = "JetBrainsMono Nerd Font"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Italic"
 
 [font.bold_italic]
-family = "JetBrainsMono Nerd Font"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Bold Italic"
 
 [window]

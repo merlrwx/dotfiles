@@ -1,5 +1,5 @@
 configuration {
-    font: "JetBrains Mono 12";
+    font: "IoskeleyMonoTerm Nerd Font Mono 12";
     show-icons: true;
     drun-display-format: "{name}";
 }

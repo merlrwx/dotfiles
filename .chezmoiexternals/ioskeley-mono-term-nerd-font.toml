@@ -1,0 +1,15 @@
+{{- if eq .profile "fedora-sway" }}
+[".local/share/fonts/IoskeleyMonoTermNerdFont"]
+type = "archive"
+url = "https://github.com/ahatem/IoskeleyMono/releases/download/v2.1.0/IoskeleyMono-Term-NerdFont.zip"
+stripComponents = 1
+include = [
+    "Normal/IoskeleyMonoTermNerdFontMono-Regular.ttf",
+    "Normal/IoskeleyMonoTermNerdFontMono-Bold.ttf",
+    "Normal/IoskeleyMonoTermNerdFontMono-Italic.ttf",
+    "Normal/IoskeleyMonoTermNerdFontMono-BoldItalic.ttf",
+]
+
+[".local/share/fonts/IoskeleyMonoTermNerdFont".checksum]
+sha256 = "2eb905184e40602f6711d84c28448a0056a77de96881bbdee55b9595d40f2265"
+{{- end }}

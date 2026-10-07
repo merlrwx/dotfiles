@@ -11,7 +11,7 @@ if [[ {{ $profile | quote }} != "fedora-sway" || ! -f /etc/fedora-release ]]; th
     exit 0
 fi
 
-# Re-run when the bundled GTK theme or pinned icon source changes.
+# Re-run when the bundled theme, icon source, or system font changes.
 # GTK theme archive SHA-256: 5f492971fb0e564323aa81a79d35dafb0bf64ab85b966da69c41f43947954000
 # Gruvbox GTK source: 578cd220b5ff6e86b078a6111d26bb20ec8c733f
 # Source archive SHA-256: f45da23a6c4123148cf8f78983e391a86c2e2ee1b7a80aa66790f148cb9619bd
@@ -57,7 +57,11 @@ if command -v gsettings >/dev/null 2>&1; then
     gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
     gsettings set org.gnome.desktop.interface gtk-theme 'Gruvbox-Yellow-Dark-Compact-Medium'
     gsettings set org.gnome.desktop.interface icon-theme 'Gruvbox_Dark'
-    gsettings set org.gnome.desktop.interface font-name 'JetBrains Mono 10'
+    gsettings set org.gnome.desktop.interface font-name 'IoskeleyMonoTerm Nerd Font Mono 10'
+fi
+
+if command -v fc-cache >/dev/null 2>&1; then
+    fc-cache --force "$HOME/.local/share/fonts/IoskeleyMonoTermNerdFont"
 fi
 
 if command -v xdg-mime >/dev/null 2>&1; then
