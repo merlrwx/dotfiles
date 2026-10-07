@@ -19,6 +19,11 @@ shared_paths=(
     .tmux.conf
     .vimrc
     .config/mise/config.toml
+    .local/bin/neofetch
+    .local/share/blesh/ble.sh
+    .config/blesh/init.sh
+    .config/neofetch/cat
+    .config/neofetch/config.conf
     .config/starship.toml
     .config/nvim/init.lua
     .config/nvim/lua/config/clipboard.lua

@@ -1,5 +1,10 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
+# Muted Gruvbox Dark palette, coordinated with the terminal's Gruvbox Dark:
+# foreground #d5c4a1, muted #a89984, subtle #928374, red #ea6962,
+# green #a9b665, yellow #d8a657, blue #7daea3, aqua #83a598,
+# purple #d3869b.
+
 format = """
 ($username$hostname${custom.remote_host} )\
 $directory\
@@ -13,32 +18,32 @@ $character"""
 
 [username]
 format = '[$user]($style)'
-style_user = "#928374"
+style_user = "#a89984"
 style_root = "#ea6962"
 detect_env_vars = ["REMOTE_CONTAINERS"]
 
 [hostname]
 format = '[@$hostname]($style)'
-style = "#928374"
+style = "#a89984"
 
 [custom.remote_host]
 command = 'printf "%s" "${DEVPOD_WORKSPACE_ID:-$(hostname -s)}"'
 when = 'test -n "$REMOTE_CONTAINERS"'
 format = '[@$output]($style)'
-style = "#928374"
+style = "#a89984"
 os = "linux"
 
 [directory]
 style = "#d8a657"
 
 [character]
-success_symbol = "[❯](#e78a4e)"
+success_symbol = "[❯](#a9b665)"
 error_symbol = "[❯](#ea6962)"
 vimcmd_symbol = "[❮](#d3869b)"
 
 [git_branch]
 format = "[ $branch]($style)"
-style = "#a9b665"
+style = "#7daea3"
 
 [git_status]
 format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#d3869b) ($ahead_behind$stashed)]($style)"
@@ -53,14 +58,14 @@ stashed = "≡"
 
 [git_state]
 format = '\([$state( $progress_current/$progress_total)]($style)\) '
-style = "#928374"
+style = "#a89984"
 
 [cmd_duration]
 format = "[$duration]($style) "
-style = "#e78a4e"
+style = "#928374"
 
 [python]
 format = "[$virtualenv]($style) "
-style = "#928374"
+style = "#a89984"
 detect_extensions = []
 detect_files = []

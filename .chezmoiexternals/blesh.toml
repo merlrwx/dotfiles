@@ -1,0 +1,5 @@
+[".local/share/blesh"]
+type = "archive"
+url = "https://github.com/akinomyoga/ble.sh/releases/download/nightly/ble-nightly.tar.xz"
+refreshPeriod = "168h"
+stripComponents = 1

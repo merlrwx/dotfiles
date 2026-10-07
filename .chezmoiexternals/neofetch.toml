@@ -1,0 +1,7 @@
+[".local/bin/neofetch"]
+type = "file"
+url = "https://raw.githubusercontent.com/dylanaraps/neofetch/7.1.0/neofetch"
+executable = true
+
+[".local/bin/neofetch".checksum]
+sha256 = "3dc33493e54029fb1528251552093a9f9a2894fcf94f9c3a6f809136a42348c7"

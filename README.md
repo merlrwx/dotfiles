@@ -1,9 +1,14 @@
 # Fedora Sway and CLI Dotfiles
 
 Portable configuration for a Fedora Sway desktop or a headless CLI host,
-including Bash, Vim, tmux, Starship, mise, Herdr, and Codex. Chezmoi asks which
-profile to use on first setup and installs Fedora desktop packages only for the
-`fedora-sway` profile.
+including Bash, Vim, tmux, Starship, Neofetch, mise, Herdr, and Codex. Chezmoi
+asks which profile to use on first setup and installs Fedora desktop packages
+only for the `fedora-sway` profile.
+
+The Bash stack uses ble.sh for interactive editing, Vim-mode enhancements,
+syntax highlighting, autosuggestions, and menu completion. Existing Bash and
+kubectl completion scripts provide candidates; Starship owns the prompt, fzf
+remains an explicit fuzzy picker, and zoxide handles directory navigation.
 
 ## Fresh Fedora setup
 
@@ -66,6 +71,8 @@ applies do not ask again.
 - Thunar, its stable preferences and custom actions, and the directory file association
 - Swaylock wallpaper configuration and Swayidle behavior
 - Alacritty, Bash, Vim, LazyVim/Neovim, Yazi, tmux, Starship, and mise
+- ble.sh for Bash line editing, highlighting, suggestions, and menu completion
+- Neofetch with a colored cat logo at interactive shell startup
 - Herdr preferences and its Codex session integration
 - Codex model preferences, MCP endpoints, portable project trust, and skills
 - Screenshot helper and wallpaper

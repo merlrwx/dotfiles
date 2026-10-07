@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+external="$repo_root/.chezmoiexternals/blesh.toml"
+bashrc="$repo_root/dot_bashrc"
+config="$repo_root/dot_config/blesh/init.sh"
+readme="$repo_root/README.md"
+
+fail() {
+    printf 'ble.sh check failed: %s\n' "$1" >&2
+    exit 1
+}
+
+grep -Fq 'https://github.com/akinomyoga/ble.sh/releases/download/nightly/ble-nightly.tar.xz' "$external" || fail 'nightly archive URL missing'
+grep -Fq 'refreshPeriod = "168h"' "$external" || fail 'weekly external refresh missing'
+grep -Fq 'stripComponents = 1' "$external" || fail 'archive root is not stripped'
+
+guard_line="$(grep -nF '[[ $- != *i* ]] && return' "$bashrc" | cut -d: -f1)"
+load_line="$(grep -nF 'source -- "$HOME/.local/share/blesh/ble.sh" --attach=none' "$bashrc" | cut -d: -f1)"
+vi_line="$(grep -nF 'set -o vi' "$bashrc" | cut -d: -f1)"
+starship_line="$(grep -nF 'eval "$(starship init bash)"' "$bashrc" | cut -d: -f1)"
+attach_line="$(grep -nF '[[ ${BLE_VERSION-} ]] && ble-attach' "$bashrc" | cut -d: -f1)"
+[[ "$guard_line" -lt "$load_line" && "$load_line" -lt "$vi_line" && "$vi_line" -lt "$starship_line" && "$starship_line" -lt "$attach_line" ]] || fail 'interactive initialization order is incorrect'
+
+grep -Fq "bind -x '\"\\C-l\":clear'" "$bashrc" || fail 'Ctrl-L binding missing'
+grep -Fq '/usr/share/bash-completion/bash_completion' "$bashrc" || fail 'bash-completion source missing'
+grep -Fq 'complete -o default -F __start_kubectl k' "$bashrc" || fail 'kubectl completion missing'
+
+for setting in \
+    'complete_menu_complete=1' \
+    'complete_menu_filter=1' \
+    'complete_auto_complete=1' \
+    'complete_auto_delay=250' \
+    'exec_elapsed_mark=' \
+    'exec_errexit_mark=' \
+    "prompt_eol_mark=''"; do
+    grep -Fq "bleopt $setting" "$config" || fail "missing setting: $setting"
+done
+
+grep -Fq 'ble.sh for interactive editing' "$readme" || fail 'README ownership description missing'
+grep -Fq 'ble.sh for Bash line editing' "$readme" || fail 'README managed-file list missing ble.sh'
+
+output="$(bash -c 'source "$1"' _ "$bashrc")"
+[[ -z "$output" ]] || fail 'non-interactive Bash startup printed output'
+
+printf 'ble.sh integration checks passed.\n'

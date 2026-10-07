@@ -5,6 +5,11 @@
 # If not running interactively, don't do anything
 [[ $- != *i* ]] && return
 
+# Load ble.sh early so it can integrate with the rest of this interactive shell.
+if [[ -r "$HOME/.local/share/blesh/ble.sh" ]]; then
+    source -- "$HOME/.local/share/blesh/ble.sh" --attach=none
+fi
+
 # Use vi-style editing in the shell
 set -o vi
 
@@ -191,3 +196,16 @@ fi
 if [[ -f "$HOME/.cargo/env" ]]; then
     . "$HOME/.cargo/env"
 fi
+
+# Show the cat and system summary once in each interactive terminal/session.
+if command -v neofetch >/dev/null 2>&1 && [[ -t 1 ]]; then
+    if [[ -z ${TMUX-} ]]; then
+        neofetch
+    elif command -v tmux >/dev/null 2>&1 &&
+        [[ -z $(tmux show-option -qv @dotfiles_neofetch_shown 2>/dev/null) ]]; then
+        tmux set-option -q @dotfiles_neofetch_shown 1 2>/dev/null && neofetch
+    fi
+fi
+
+# Attach after shell configuration and prompt integrations are initialized.
+[[ ${BLE_VERSION-} ]] && ble-attach
