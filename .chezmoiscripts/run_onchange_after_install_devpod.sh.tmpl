@@ -1,0 +1,18 @@
+{{ if .agent_host -}}
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if command -v devpod >/dev/null 2>&1; then
+    exit 0
+fi
+
+devpod_version="v0.6.15"
+tmpdir="$(mktemp -d)"
+trap 'rm -rf -- "$tmpdir"' EXIT
+
+curl -fsSL \
+    "https://github.com/loft-sh/devpod/releases/download/${devpod_version}/devpod-linux-amd64" \
+    -o "$tmpdir/devpod"
+install -Dm0755 "$tmpdir/devpod" "$HOME/.local/bin/devpod"
+{{ end }}
