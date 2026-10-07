@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage the small, repo-local state used by autonomous Codex goals."""
+"""Manage the small, repo-local state used by autonomous coding goals."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def ensure_local_exclude(root: Path) -> None:
         return
     separator = "" if not current or current.endswith("\n") else "\n"
     with exclude.open("a", encoding="utf-8") as handle:
-        handle.write(f"{separator}# Codex autonomous goal runtime state\n{pattern}\n")
+        handle.write(f"{separator}# agent-goal runtime state\n{pattern}\n")
 
 
 def confined_path(root: Path, value: str) -> tuple[Path, str]:

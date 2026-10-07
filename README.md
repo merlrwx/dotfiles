@@ -1,137 +1,75 @@
 # Fedora Sway and CLI Dotfiles
 
-Portable configuration for a Fedora Sway desktop or a headless CLI host,
-including Bash, Vim, tmux, Starship, Neofetch, mise, Herdr, and Codex. Chezmoi
-asks which profile to use on first setup and installs Fedora desktop packages
-only for the `fedora-sway` profile.
+Portable configuration for two profiles: a Fedora Sway desktop and a headless
+CLI host. Both receive the same shell, development tools, Codex, Pi, Herdr,
+DevPod, shared instructions, and homelab MCP endpoint. The desktop profile adds
+GUI configuration.
 
-The Bash stack uses ble.sh for interactive editing, Vim-mode enhancements,
-syntax highlighting, autosuggestions, and menu completion. Existing Bash and
-kubectl completion scripts provide candidates; Starship owns the prompt, and fzf
-remains an explicit fuzzy picker.
+## Install
 
-## Fresh Fedora setup
-
-The quickest installation uses HTTPS, so it does not depend on SSH keys already
-being available:
+Install Git and curl, then initialize chezmoi and select `fedora-sway` or `cli`:
 
 ```bash
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/merlrwx/dotfiles.git
 ```
 
-Alternatively, clone the repository and run its bootstrap script:
+The first apply installs CLI prerequisites and the tools declared in mise. The
+desktop profile also installs Fedora desktop packages and Gruvbox Material
+themes. The CLI profile uses no host-name-specific role.
+
+If starting from a clone, run `./setup` from the repository. On a new machine,
+sign in to Codex and Pi separately after setup. Credentials are local and are
+never copied between the agents.
+
+## Daily use
+
+Run each harness on the host in its own Herdr session. For example, open a
+session and start the harness in its pane:
 
 ```bash
-PUBLIC_REPOS="$HOME/jd/20-29-code/repos/public"
-mkdir -p "$PUBLIC_REPOS"
-git clone https://github.com/merlrwx/dotfiles.git "$PUBLIC_REPOS/dotfiles"
-cd "$PUBLIC_REPOS/dotfiles"
-./setup
+herdr --session codex
+# In the Herdr pane:
+codex
 ```
 
-The first apply may ask for `sudo` to install CLI build prerequisites and, for
-the `fedora-sway` profile, Fedora desktop packages.
-
-## Ubuntu and Amazon Linux 2023 CLI setup
-
-Install Git and curl first so chezmoi can download and clone the source:
-
-Ubuntu:
+For Pi, start a separate session:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y curl git
+herdr --session pi
+# In the Herdr pane:
+pi
 ```
 
-Amazon Linux 2023:
+Both profiles include Git, SSH, curl, jq, mise, editors, terminal tools,
+GitHub/GitLab CLIs, kubectl, Helm, Flux, Docker, DevPod, Codex, Pi, and Herdr.
+Herdr manages sessions and visibility. DevPod/DevContainer is optional project
+tooling used from those sessions; it does not host the agents. When working in
+parallel, start each agent manually in its own Git worktree. V0 has no automatic
+worker spawning or scheduler. Repository-specific DevPod/DevContainer
+instructions and `mise` tasks take precedence when available.
 
-```bash
-sudo dnf install -y curl git
-```
+The shell uses ble.sh for interactive editing and completion. Neofetch shows a
+colored cat once at interactive terminal startup.
 
-Then initialize the same repository and choose the `cli` profile when prompted:
+## Plan a complex change
 
-```bash
-sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/merlrwx/dotfiles.git
-```
+Discuss and research the idea in ChatGPT, save a draft `PLAN.md` in the
+repository, then use `$grill-me` to find missing decisions and sharpen its
+acceptance criteria in a Pi session. Keep that planning work separate. Start a
+fresh Codex session to implement the revised plan.
 
-The CLI profile manages Bash, Vim, Neovim with LazyVim, Yazi, tmux, mise,
-Starship, Herdr, and Codex configuration. The shell, Vim, Neovim, Yazi, and
-Codex syntax highlighting use Gruvbox Material dark hard. The Fedora Sway
-profile adds matching Alacritty, Waybar, Rofi, and GTK theming. The CLI profile
-skips Sway, Waybar, Rofi, GTK, Thunar,
-Alacritty, wallpaper, desktop entries, and Fedora desktop package/theme
-installation. The profile is stored in the local chezmoi config, so later
-applies do not ask again.
+See [the example plan](docs/PLAN-example.md) and
+[the autonomous goal workflow](docs/autonomous-goals.md).
 
-On a host named `agentbox`, the local chezmoi config also sets `agent_host = true`
-and installs the pinned DevPod v0.6.15 CLI into `~/.local/bin`. Other CLI hosts
-do not install DevPod.
+## Themes and shell
 
-## What is managed
+The shared shell, editors, and CLI use Gruvbox Material dark hard. Fedora Sway
+adds matching Alacritty, Waybar, Rofi, and GTK themes. Bash uses ble.sh for
+syntax highlighting, suggestions, and menu completion; Starship owns the
+prompt.
 
-- Sway configuration and portable key bindings (`fedora-sway` profile)
-- Waybar configuration and styling
-- Rofi configuration and Gruvbox Material theme
-- Gruvbox Material GTK and icon themes, system dark mode, and Ioskeley Mono UI font
-- Thunar, its stable preferences and custom actions, and the directory file association
-- Swaylock wallpaper configuration and Swayidle behavior
-- Alacritty, Bash, Vim, LazyVim/Neovim, Yazi, tmux, Starship, and mise
-- ble.sh for Bash line editing, highlighting, suggestions, and menu completion
-- Neofetch with a colored cat logo on a clean screen at interactive shell startup
-- Herdr preferences and its Codex session integration
-- Codex model preferences, MCP endpoints, portable project trust, and skills
-- Screenshot helper and wallpaper
-- Fedora packages required by the desktop configuration (`fedora-sway` profile)
+## Homelab MCP
 
-Codex authentication, conversations, memories, databases, caches, generated
-rules, and machine identity are deliberately not tracked. On a new machine,
-run `codex` once and sign in after `chezmoi apply` finishes.
-
-For authenticated homelab tools, follow [Homelab MCP with Codex](docs/homelab-mcp.md),
-including laptop access over Tailscale and how to interpret HTTP 401 responses.
-
-Codex loads the global Caveman skill on demand and automatically follows the
-Conventional Commits skill whenever it creates or amends a Git commit. Chezmoi
-also installs and enables the native `grill-me`, Ponytail, and `teach` plugins.
-Restart Codex after the first apply so it discovers newly installed extensions.
-
-Launching Herdr through the shell or desktop menu first updates the standalone
-Codex and Herdr installs. If an update is unavailable, the launcher reports a
-warning and opens the currently installed version.
-
-Machine-specific output settings are deliberately not tracked. Put monitor and
-workspace assignments in:
-
-```text
-~/.config/sway/config.d/10-desktop-outputs.conf
-```
-
-Discover a machine's output names with:
-
-```bash
-swaymsg -t get_outputs
-```
-
-Then add only that machine's layout to the local override. Chezmoi ignores the
-file, so desktop monitor names cannot leak into the laptop configuration.
-
-## Updating
-
-Edit managed files normally, then capture and review the changes:
-
-```bash
-chezmoi re-add
-chezmoi diff
-chezmoi cd
-git status
-```
-
-## Autonomous Codex goals
-
-The Codex setup includes an opt-in autonomous goal loop built from a small
-repository contract, fixed verification, and the native `Stop` hook. It supports
-both reviewed goals produced after Grill Me and clear goals started immediately.
-
-See [docs/autonomous-goals.md](docs/autonomous-goals.md) for setup, permissions,
-Git workflows, interruption, recovery, and skill benchmarking.
+Codex and Pi use the same homelab endpoint. Each agent has a separate OAuth
+login and stores its own credentials locally. Follow
+[Homelab MCP setup](docs/homelab-mcp.md) after connecting to the homelab network.

@@ -34,7 +34,12 @@ shared_paths=(
     .config/yazi/yazi.toml
     .config/yazi/flavors/gruvbox-material.yazi/flavor.toml
     .codex/config.toml
+    .codex/AGENTS.md
     .codex/themes/gruvbox-material-hard.tmTheme
+    .pi/agent/AGENTS.md
+    .pi/agent/settings.json
+    .pi/agent/mcp.json
+    .pi/agent/extensions/autonomous-goal.ts
 )
 
 desktop_paths=(
@@ -129,14 +134,17 @@ if ! grep -Fq 'profile = "cli"' <<<"$generated_config"; then
     printf 'Profile prompt did not save the selected CLI profile.\n' >&2
     exit 1
 fi
-if ! grep -Eq '^    agent_host = (true|false)$' <<<"$generated_config"; then
-    printf 'Generated config did not set the agent_host flag.\n' >&2
+if grep -Eq '^    agent_host =' <<<"$generated_config"; then
+    printf 'Generated config still has a host-specific agent role.\n' >&2
+    exit 1
+fi
+if ! grep -Fq 'homelab_mcp_url = "https://mcp-server.home.arpa/mcp/"' <<<"$generated_config"; then
+    printf 'Generated config is missing the shared homelab MCP endpoint.\n' >&2
     exit 1
 fi
 
 devpod_script="$repo_root/.chezmoiscripts/run_onchange_after_install_devpod.sh.tmpl"
 rendered_devpod_script="$(chezmoi --source "$repo_root" \
-    --override-data '{"profile":"cli","agent_host":true}' \
     execute-template <"$devpod_script")"
 if ! bash -n <<<"$rendered_devpod_script"; then
     printf 'DevPod installer has invalid Bash syntax.\n' >&2
@@ -144,14 +152,7 @@ if ! bash -n <<<"$rendered_devpod_script"; then
 fi
 if ! grep -Fq 'v0.6.15' <<<"$rendered_devpod_script" || \
     ! grep -Fq 'devpod-linux-amd64' <<<"$rendered_devpod_script"; then
-    printf 'Agent host installer does not use the pinned DevPod Linux release.\n' >&2
-    exit 1
-fi
-rendered_non_agent_script="$(chezmoi --source "$repo_root" \
-    --override-data '{"profile":"cli","agent_host":false}' \
-    execute-template <"$devpod_script")"
-if [[ -n "$rendered_non_agent_script" ]]; then
-    printf 'DevPod installer should be omitted on non-agent CLI hosts.\n' >&2
+    printf 'Shared CLI installer does not use the pinned DevPod Linux release.\n' >&2
     exit 1
 fi
 
@@ -181,12 +182,13 @@ if ! bash -n <<<"$rendered_cli_dependencies_script"; then
     printf 'CLI dependency installer has invalid Bash syntax.\n' >&2
     exit 1
 fi
-for tool in neovim yazi fd fzf lazygit ripgrep jq; do
+for tool in neovim yazi fd fzf lazygit ripgrep jq glab kubectl helm flux2; do
     if ! grep -Eq "^${tool} = \"latest\"$" "$repo_root/dot_config/mise/config.toml"; then
         printf 'mise config is missing CLI tool: %s\n' "$tool" >&2
         exit 1
     fi
 done
+grep -Eq '^node = "24"$' "$repo_root/dot_config/mise/config.toml"
 if grep -Eq '^zoxide[[:space:]]*=' "$repo_root/dot_config/mise/config.toml"; then
     printf 'mise config still installs zoxide.\n' >&2
     exit 1
@@ -203,6 +205,21 @@ for package in xclip wl-clipboard; do
         exit 1
     fi
 done
+for package in docker.io moby-engine docker-cli openssh-client openssh-clients curl; do
+    if ! grep -Fq "$package" "$cli_dependencies_script"; then
+        printf 'CLI dependency installer is missing shared package: %s\n' "$package" >&2
+        exit 1
+    fi
+done
+
+pi_installer="$repo_root/.chezmoiscripts/run_onchange_after_install_pi.sh.tmpl"
+rendered_pi_installer="$(chezmoi --source "$repo_root" execute-template <"$pi_installer")"
+if ! bash -n <<<"$rendered_pi_installer" || \
+    ! grep -Fq 'https://pi.dev/install.sh' <<<"$rendered_pi_installer" || \
+    ! grep -Fq 'exec -- bash' <<<"$rendered_pi_installer"; then
+    printf 'Pi installer should use the managed Node.js runtime and official installer.\n' >&2
+    exit 1
+fi
 grep -Fq 'powershell.exe' "$repo_root/dot_config/nvim/lua/config/clipboard.lua"
 grep -Fq 'vim.g.clipboard = "osc52"' "$repo_root/dot_config/nvim/lua/config/clipboard.lua"
 grep -Fq 'vim.opt.clipboard = "unnamedplus"' "$repo_root/dot_config/nvim/lua/config/options.lua"

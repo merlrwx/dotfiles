@@ -8,7 +8,7 @@ source /etc/os-release
 
 case "${ID:-}" in
     ubuntu|debian)
-        packages=(file build-essential unzip xclip wl-clipboard)
+        packages=(file build-essential git openssh-client curl unzip xclip wl-clipboard docker.io)
         package_installed() {
             [[ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null || true)" == installed ]]
         }
@@ -18,12 +18,18 @@ case "${ID:-}" in
         }
         ;;
     fedora)
-        packages=(file gcc make unzip xclip wl-clipboard)
-        package_installed() { rpm -q "$1" >/dev/null 2>&1; }
+        packages=(file gcc make git openssh-clients curl unzip xclip wl-clipboard moby-engine docker-cli)
+        package_installed() {
+            if [[ "$1" == curl ]]; then
+                rpm -q curl-minimal >/dev/null 2>&1 || rpm -q curl >/dev/null 2>&1
+            else
+                rpm -q "$1" >/dev/null 2>&1
+            fi
+        }
         install_packages() { sudo dnf install -y "${missing_packages[@]}"; }
         ;;
     amzn|rhel|centos)
-        packages=(file gcc make unzip)
+        packages=(file gcc make git openssh-clients curl unzip docker)
         package_installed() { rpm -q "$1" >/dev/null 2>&1; }
         install_packages() { sudo dnf install -y "${missing_packages[@]}"; }
         ;;
@@ -38,3 +44,9 @@ for package in "${packages[@]}"; do
 done
 
 ((${#missing_packages[@]} == 0)) || install_packages
+
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files docker.service --no-legend | grep -q docker.service; then
+    if ! systemctl is-active --quiet docker.service; then
+        sudo systemctl enable --now docker.service
+    fi
+fi

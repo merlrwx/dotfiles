@@ -44,7 +44,7 @@ done
 grep -Fq "blehook/eval-after-load keymap_vi 'bleopt keymap_vi_mode_show='" "$config" || fail 'vi-mode indicator is not hidden after the vi keymap loads'
 
 grep -Fq 'ble.sh for interactive editing' "$readme" || fail 'README ownership description missing'
-grep -Fq 'ble.sh for Bash line editing' "$readme" || fail 'README managed-file list missing ble.sh'
+grep -Fq 'ble.sh for interactive editing and completion' "$readme" || fail 'README managed-file list missing ble.sh'
 
 output="$(bash -c 'source "$1"' _ "$bashrc")"
 [[ -z "$output" ]] || fail 'non-interactive Bash startup printed output'

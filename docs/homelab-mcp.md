@@ -1,4 +1,4 @@
-# Homelab MCP with Codex
+# Homelab MCP with Codex and Pi
 
 Homelab MCP uses Authentik OAuth. Tailscale provides remote network access;
 Codex signs in separately through your browser. Authentication was introduced
@@ -19,7 +19,10 @@ by the September 21, 2026 homelab configuration change, not by a reboot.
    browser uses a separate certificate store.
 4. Ensure the browser can reach `https://auth.merl.one` for Authentik login.
 
-The dotfiles already configure this endpoint in `~/.codex/config.toml`:
+The dotfiles configure the same endpoint in both agent harnesses:
+
+- Codex: `~/.codex/config.toml`
+- Pi: `~/.pi/agent/mcp.json`
 
 ```toml
 [mcp_servers."homelab-mcp"]
@@ -32,7 +35,7 @@ If setting up Codex without applying these dotfiles, add it once:
 codex mcp add homelab-mcp --url https://mcp-server.home.arpa/mcp/
 ```
 
-On each machine, run:
+On each machine, sign in to Codex separately:
 
 ```sh
 codex mcp login homelab-mcp
@@ -48,6 +51,19 @@ Start a fresh Codex session (restart the app or extension if applicable).
 In the CLI, use `/mcp` to check that `homelab-mcp` is connected and lists tools.
 OAuth credentials stay local to each machine; do not put tokens, authorization
 URLs, or the server's OIDC client secret in dotfiles.
+
+For Pi, start Pi and sign in separately:
+
+```sh
+pi mcp login homelab-mcp
+pi mcp list
+```
+
+Pi opens its own Authentik login and stores its OAuth credentials in
+`~/.pi/agent/mcp-auth.json`, separate from Codex. The configured `codemode`
+exposure keeps MCP tools out of each model request's direct tool list; Pi can
+discover and call them through its MCP codemode helpers. Use `/mcp` in an
+interactive Pi session to inspect connection state.
 
 ## Understand a 401 after login
 
@@ -70,6 +86,7 @@ session and `/mcp` to verify that connection.
 | Plain curl returns 401 | Expected: curl supplied no bearer token |
 | Authentik denies access | Account membership in `homelab-admins` |
 | Codex still requires login | Restart Codex; confirm login used the same OS user, `CODEX_HOME`, server name, and exact URL |
+| Pi still requires login | Run `pi mcp login homelab-mcp`; confirm Pi can reach the URL and inspect `/mcp` |
 
 If a fresh Codex session still fails, run `codex mcp login homelab-mcp`
 on that machine and retry. Report the actual Codex error rather than the
@@ -92,6 +109,7 @@ operation. The remote laptop's Tailscale connectivity must be checked there.
 ## References
 
 - [Codex MCP configuration and OAuth](https://developers.openai.com/codex/extend/mcp)
+- [Pi MCP servers and OAuth](https://pi.dev/docs/latest/mcp)
 - [Tailscale DNS configuration](https://tailscale.com/docs/reference/dns-in-tailscale)
 - Private `homelab-iac` runbooks: `docs/operations/tailscale-remote-access.md`
   and `docs/operations/certificate-management.md`

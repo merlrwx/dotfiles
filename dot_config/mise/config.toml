@@ -1,4 +1,5 @@
 [tools]
+node = "24"
 bat = "latest"
 tmux = "latest"
 chezmoi = "latest"
@@ -12,3 +13,7 @@ fzf = "latest"
 lazygit = "latest"
 ripgrep = "latest"
 jq = "latest"
+glab = "latest"
+kubectl = "latest"
+helm = "latest"
+flux2 = "latest"

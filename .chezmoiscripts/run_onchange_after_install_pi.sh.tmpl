@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if command -v pi >/dev/null 2>&1; then
+    exit 0
+fi
+
+if [[ -x "$HOME/.local/bin/mise" ]]; then
+    MISE="$HOME/.local/bin/mise"
+elif command -v mise >/dev/null 2>&1; then
+    MISE="$(command -v mise)"
+else
+    printf 'mise is required to install Pi with the managed Node.js runtime.\n' >&2
+    exit 1
+fi
+
+"$MISE" exec -- bash -c 'curl -fsSL https://pi.dev/install.sh | sh'

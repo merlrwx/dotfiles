@@ -30,7 +30,8 @@ grep -Fq '[[ -t 1 ]]' "$bashrc" || fail 'startup does not require terminal outpu
 grep -Fq 'tmux show-option -qv @dotfiles_neofetch_shown' "$bashrc" || fail 'tmux session guard is missing'
 grep -Fq 'tmux set-option -q @dotfiles_neofetch_shown 1' "$bashrc" || fail 'tmux session guard is not recorded'
 grep -Fq 'command -v clear >/dev/null 2>&1 && clear' "$bashrc" || fail 'startup screen is not cleared before Neofetch'
-grep -Fq 'Neofetch with a colored cat logo' "$readme" || fail 'README does not document Neofetch startup'
+grep -Fq 'Neofetch shows a' "$readme" || fail 'README does not document Neofetch startup'
+grep -Fq 'colored cat once at interactive terminal startup' "$readme" || fail 'README does not explain when Neofetch runs'
 bash -n "$bashrc" || fail 'Bash startup has invalid syntax'
 
 printf 'Neofetch cat startup checks passed.\n'

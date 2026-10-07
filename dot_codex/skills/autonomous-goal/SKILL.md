@@ -1,6 +1,6 @@
 ---
 name: autonomous-goal
-description: Prepare or execute a persistent repository goal whose completion is enforced by verification and the Codex Stop hook. Use when the user invokes $autonomous-goal, asks Codex to keep working autonomously until a concrete outcome passes its checks, or resumes an active .agent goal. Do not use for ordinary interactive tasks that should end after one turn.
+description: Prepare or execute a persistent repository goal whose completion is enforced by verification and the active agent's continuation support. Use when the user invokes $autonomous-goal, asks an agent to keep working until a concrete outcome passes its checks, or resumes an active .agent goal. Do not use for ordinary interactive tasks that should end after one turn.
 ---
 
 # Autonomous Goal
@@ -74,8 +74,9 @@ Starting requires a clean worktree unless the user deliberately authorized
 
 1. Read applicable `AGENTS.md` files and inspect existing implementation before
    editing.
-2. Use only skills relevant to the task. Ponytail and Caveman are not automatic
-   defaults; the goal and measured local benchmark decide.
+2. Use only skills relevant to the task. The shared default skill set is
+   deliberately small; add specialized workflows only when the task calls for
+   them.
 3. Make the smallest coherent change that satisfies the acceptance criteria.
 4. Make routine implementation decisions without asking. Diagnose failures,
    change approach, and continue.
@@ -96,8 +97,8 @@ Inspect the final diff, ensure every acceptance criterion has evidence, then run
 agent-goal complete
 ```
 
-If verification fails, continue working. The global Stop hook also continues an
-active goal when a turn ends prematurely.
+If verification fails, continue working. Codex's Stop hook and Pi's goal
+extension continue an active goal when a turn ends prematurely.
 
 Only a genuinely unavailable external dependency may end an incomplete run.
 Record what is unavailable, evidence, attempted alternatives, and the exact
@@ -111,5 +112,5 @@ agent-goal block \
   --unblock "..."
 ```
 
-The user can always interrupt Codex or run `agent-goal pause`. Resume paused or
-blocked work with `agent-goal resume`.
+The user can always interrupt the agent or run `agent-goal pause`. Resume paused
+or blocked work with `agent-goal resume`.

@@ -12,7 +12,7 @@ theme = "gruvbox-material-hard"
 trust_level = "trusted"
 
 [mcp_servers."homelab-mcp"]
-url = "https://mcp-server.home.arpa/mcp/"
+url = {{ .homelab_mcp_url | quote }}
 
 [mcp_servers."homelab-mcp".tools.execute_command]
 approval_mode = "approve"
@@ -44,16 +44,7 @@ approval_mode = "approve"
 [mcp_servers.openaiDeveloperDocs]
 url = "https://developers.openai.com/mcp"
 
-[plugins."superpowers@openai-curated"]
-enabled = false
-
 [plugins."engineering-suite-grill-me@openai-curated-remote"]
-enabled = true
-
-[plugins."engineering-suite-ponytail@openai-curated-remote"]
-enabled = true
-
-[plugins."engineering-suite-teach@openai-curated-remote"]
 enabled = true
 
 [features]

@@ -6,8 +6,12 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 installer="$repo_root/.chezmoiscripts/run_onchange_after_install_codex_extensions.sh.tmpl"
 herdr_installer="$repo_root/.chezmoiscripts/run_onchange_after_configure_herdr_codex.sh.tmpl"
 config="$repo_root/dot_codex/private_config.toml.tmpl"
-externals="$repo_root/.chezmoiexternals/codex-skills.toml"
-instructions="$repo_root/dot_codex/AGENTS.md"
+shared_instructions="$repo_root/dot_config/agents/AGENTS.md"
+codex_instructions="$repo_root/dot_codex/AGENTS.md.tmpl"
+pi_instructions="$repo_root/dot_pi/agent/AGENTS.md.tmpl"
+pi_settings="$repo_root/dot_pi/agent/settings.json.tmpl"
+pi_mcp="$repo_root/dot_pi/agent/mcp.json.tmpl"
+launcher="$repo_root/dot_local/bin/executable_herdr-launch"
 theme="$repo_root/dot_codex/themes/gruvbox-material-hard.tmTheme"
 
 assert_contains() {
@@ -20,19 +24,58 @@ assert_contains() {
     fi
 }
 
-assert_contains "$externals" '.codex/skills/caveman/SKILL.md'
-assert_contains "$instructions" '## Teach workspaces'
-assert_contains "$instructions" 'outside the Git worktree'
-assert_contains "$instructions" 'even if ignored'
+assert_contains "$codex_instructions" 'include "dot_config/agents/AGENTS.md"'
+assert_contains "$pi_instructions" 'include "dot_config/agents/AGENTS.md"'
+assert_contains "$shared_instructions" 'Make the smallest correct change.'
+assert_contains "$shared_instructions" 'Give each autonomous agent its own Git worktree;'
+assert_contains "$shared_instructions" 'Conventional Commits'
 assert_contains "$config" '[tui]'
 assert_contains "$config" 'theme = "gruvbox-material-hard"'
+assert_contains "$config" 'url = {{ .homelab_mcp_url | quote }}'
 assert_contains "$theme" '<string>Gruvbox Material Hard</string>'
 assert_contains "$herdr_installer" 'tail -c 1 "$hooks_file"'
-for plugin in grill-me ponytail teach; do
-    selector="engineering-suite-$plugin@openai-curated-remote"
-    assert_contains "$installer" "$selector"
-    assert_contains "$config" "[plugins.\"$selector\"]"
+assert_contains "$herdr_installer" 'herdr integration install pi'
+assert_contains "$installer" 'engineering-suite-grill-me@openai-curated-remote'
+assert_contains "$installer" 'codex plugin remove'
+assert_contains "$installer" 'engineering-suite-ponytail@openai-curated-remote'
+assert_contains "$installer" 'engineering-suite-teach@openai-curated-remote'
+if grep -Eq 'plugins\."engineering-suite-(ponytail|teach)' "$config"; then
+    printf 'FAIL: removed plugins remain enabled in Codex config\n' >&2
+    exit 1
+fi
+assert_contains "$pi_settings" '"defaultProvider": "openai"'
+assert_contains "$pi_settings" '"theme": "system"'
+assert_contains "$pi_settings" 'engineering-suite-grill-me/2.0.0/skills/grill-me'
+assert_contains "$pi_mcp" '"homelab-mcp"'
+assert_contains "$pi_mcp" '"exposure": "codemode"'
+assert_contains "$launcher" 'exec herdr "$@"'
+if grep -Eq 'curl|update_codex|update_herdr' "$launcher"; then
+    printf 'FAIL: Herdr launcher still updates tools during launch\n' >&2
+    exit 1
+fi
+if [[ -e "$repo_root/.chezmoiexternals/codex-skills.toml" || \
+    -e "$repo_root/dot_codex/skills/caveman/SKILL.md" || \
+    -e "$repo_root/dot_codex/skills/conventional-commits/SKILL.md" ]]; then
+    printf 'FAIL: retired Codex skills remain in the managed source\n' >&2
+    exit 1
+fi
+
+for instructions in "$codex_instructions" "$pi_instructions"; do
+    rendered="$(chezmoi --source "$repo_root" execute-template <"$instructions")"
+    if [[ "$rendered" != "$(cat "$shared_instructions")" ]]; then
+        printf 'FAIL: %s does not render the canonical shared instructions\n' "$instructions" >&2
+        exit 1
+    fi
 done
+
+rendered_settings="$(chezmoi --source "$repo_root" execute-template <"$pi_settings")"
+rendered_mcp="$(chezmoi --source "$repo_root" \
+    --override-data '{"homelab_mcp_url":"https://mcp-server.home.arpa/mcp/"}' \
+    execute-template <"$pi_mcp")"
+jq -e '.defaultProvider == "openai" and .theme == "system" and (.skills | length == 2)' \
+    <<<"$rendered_settings" >/dev/null
+jq -e '.mcpServers["homelab-mcp"].url == "https://mcp-server.home.arpa/mcp/" and .mcpServers["homelab-mcp"].exposure == "codemode"' \
+    <<<"$rendered_mcp" >/dev/null
 
 # Authentication and runtime state must remain local to each machine.
 if find "$repo_root/dot_codex" -type f \

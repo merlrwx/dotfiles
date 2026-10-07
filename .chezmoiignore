@@ -1,6 +1,7 @@
 setup
 old-setup
 README.md
+.config/agents/**
 alacritty/**
 archive_*/**
 **/archive_*/**
