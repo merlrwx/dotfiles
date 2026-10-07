@@ -13,3 +13,8 @@ auto_switch = false
 [ui]
 show_agent_labels_on_pane_borders = true
 agent_panel_sort = "priority"
+
+# Keep Herdr's prefix distinct from the outer tmux Ctrl-b prefix. This lets
+# Herdr shortcuts pass through a local tmux session while SSH'd into this host.
+[keys]
+prefix = "f12"
