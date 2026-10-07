@@ -2,15 +2,15 @@
 size = 17
 
 [font.normal]
-family = "JetBrains Mono"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Regular"
 
 [font.bold]
-family = "JetBrains Mono"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Bold"
 
 [font.italic]
-family = "JetBrains Mono"
+family = "IoskeleyMonoTerm Nerd Font Mono"
 style = "Italic"
 
 [window]
