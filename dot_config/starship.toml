@@ -3,7 +3,7 @@
 # Gruvbox Material Dark palette, coordinated with Alacritty and ble.sh:
 # hard background #1d2021, surface #32302f, foreground #d4be98,
 # muted #a89984, subtle #928374, red #d2746e, green #9eaa72,
-# amber #c1a06d, blue #83a598, aqua #89a58e, purple #b88c9b.
+# amber #c1a06d, blue #718b91, aqua #89a58e, purple #b88c9b.
 
 format = """
 ($username$hostname${custom.remote_host} )\
@@ -43,7 +43,7 @@ vimcmd_symbol = "[❮](#b88c9b)"
 
 [git_branch]
 format = "[ $branch]($style)"
-style = "#83a598"
+style = "#718b91"
 
 [git_status]
 format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#c1a06d) ($ahead_behind$stashed)]($style)"

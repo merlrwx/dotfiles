@@ -71,7 +71,7 @@ window#waybar {
 }
 
 #network {
-  color: #7daea3;
+  color: #718b91;
 }
 
 #pulseaudio {
@@ -79,7 +79,7 @@ window#waybar {
 }
 
 #bluetooth {
-  color: #7daea3;
+  color: #718b91;
 }
 
 #cpu,
