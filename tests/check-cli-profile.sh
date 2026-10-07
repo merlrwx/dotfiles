@@ -176,7 +176,7 @@ grep -Fq 'powershell.exe' "$repo_root/dot_config/nvim/lua/config/clipboard.lua"
 grep -Fq 'vim.g.clipboard = "osc52"' "$repo_root/dot_config/nvim/lua/config/clipboard.lua"
 grep -Fq 'vim.opt.clipboard = "unnamedplus"' "$repo_root/dot_config/nvim/lua/config/options.lua"
 grep -Fq 'dark = "gruvbox-material"' "$repo_root/dot_config/yazi/theme.toml"
-grep -Fq 'vim.g.gruvbox_material_background = "medium"' \
+grep -Fq 'vim.g.gruvbox_material_background = "hard"' \
     "$repo_root/dot_config/nvim/lua/plugins/gruvbox_material.lua"
 grep -Fq 'vim.opt.background = "dark"' \
     "$repo_root/dot_config/nvim/lua/plugins/gruvbox_material.lua"
