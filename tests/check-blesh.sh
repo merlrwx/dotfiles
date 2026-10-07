@@ -38,6 +38,7 @@ for setting in \
     "prompt_eol_mark=''"; do
     grep -Fq "bleopt $setting" "$config" || fail "missing setting: $setting"
 done
+grep -Fq "blehook/eval-after-load keymap_vi 'bleopt keymap_vi_mode_show='" "$config" || fail 'vi-mode indicator is not hidden after the vi keymap loads'
 
 grep -Fq 'ble.sh for interactive editing' "$readme" || fail 'README ownership description missing'
 grep -Fq 'ble.sh for Bash line editing' "$readme" || fail 'README managed-file list missing ble.sh'

@@ -4,6 +4,9 @@ bleopt complete_menu_filter=1
 bleopt complete_auto_complete=1
 bleopt complete_auto_delay=250
 
+# Keep Vim editing without the extra mode banner below the prompt.
+blehook/eval-after-load keymap_vi 'bleopt keymap_vi_mode_show='
+
 # Muted Gruvbox Dark palette shared with starship.toml.
 # foreground #d5c4a1, muted #a89984, subtle #928374, red #ea6962,
 # green #a9b665, yellow #d8a657, blue #7daea3, aqua #83a598,

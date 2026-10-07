@@ -72,7 +72,7 @@ applies do not ask again.
 - Swaylock wallpaper configuration and Swayidle behavior
 - Alacritty, Bash, Vim, LazyVim/Neovim, Yazi, tmux, Starship, and mise
 - ble.sh for Bash line editing, highlighting, suggestions, and menu completion
-- Neofetch with a colored cat logo at interactive shell startup
+- Neofetch with a colored cat logo on a clean screen at interactive shell startup
 - Herdr preferences and its Codex session integration
 - Codex model preferences, MCP endpoints, portable project trust, and skills
 - Screenshot helper and wallpaper

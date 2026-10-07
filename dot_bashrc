@@ -200,10 +200,14 @@ fi
 # Show the cat and system summary once in each interactive terminal/session.
 if command -v neofetch >/dev/null 2>&1 && [[ -t 1 ]]; then
     if [[ -z ${TMUX-} ]]; then
+        command -v clear >/dev/null 2>&1 && clear
         neofetch
     elif command -v tmux >/dev/null 2>&1 &&
         [[ -z $(tmux show-option -qv @dotfiles_neofetch_shown 2>/dev/null) ]]; then
-        tmux set-option -q @dotfiles_neofetch_shown 1 2>/dev/null && neofetch
+        tmux set-option -q @dotfiles_neofetch_shown 1 2>/dev/null && {
+            command -v clear >/dev/null 2>&1 && clear
+            neofetch
+        }
     fi
 fi
 
