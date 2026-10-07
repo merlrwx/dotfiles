@@ -44,6 +44,10 @@ desktop_paths=(
     .config/xfce4/xfconf/xfce-perchannel-xml/thunar.xml
     .local/bin/sway-snip
     .local/share/applications/herdr.desktop
+    .local/share/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Regular.ttf
+    .local/share/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Bold.ttf
+    .local/share/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Italic.ttf
+    .local/share/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-BoldItalic.ttf
     Pictures/wallpaper.jpg
     .chezmoiscripts/install_fedora_sway_packages.sh
     .chezmoiscripts/zz_install_gruvbox_desktop.sh
@@ -63,6 +67,24 @@ for path in "${desktop_paths[@]}"; do
     fi
     if ! grep -Fxq "$path" <<<"$desktop_managed"; then
         printf 'Fedora Sway profile is missing desktop path: %s\n' "$path" >&2
+        exit 1
+    fi
+done
+
+alacritty_font="$repo_root/dot_config/alacritty/alacritty.toml"
+nerd_font_families="$(grep -Fc 'family = "JetBrainsMono Nerd Font"' "$alacritty_font")"
+if [[ "$nerd_font_families" -ne 4 ]]; then
+    printf 'Alacritty should use JetBrainsMono Nerd Font for all four styles.\n' >&2
+    exit 1
+fi
+
+font_external="$repo_root/.chezmoiexternals/jetbrains-mono-nerd-font.toml"
+for expected in \
+    'JetBrainsMono.tar.xz' \
+    '04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf' \
+    'fedora-sway'; do
+    if ! grep -Fq "$expected" "$font_external"; then
+        printf 'Nerd Font external is missing expected configuration: %s\n' "$expected" >&2
         exit 1
     fi
 done

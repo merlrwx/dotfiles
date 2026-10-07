@@ -1,0 +1,15 @@
+{{- if eq .profile "fedora-sway" }}
+[".local/share/fonts/JetBrainsMonoNerdFont"]
+type = "archive"
+url = "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz"
+include = [
+    "JetBrainsMonoNerdFont-Regular.ttf",
+    "JetBrainsMonoNerdFont-Bold.ttf",
+    "JetBrainsMonoNerdFont-Italic.ttf",
+    "JetBrainsMonoNerdFont-BoldItalic.ttf",
+    "OFL.txt",
+]
+
+[".local/share/fonts/JetBrainsMonoNerdFont".checksum]
+sha256 = "04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf"
+{{- end }}
