@@ -15,4 +15,8 @@ herdr config check
 
 if command -v codex >/dev/null 2>&1; then
     herdr integration install codex
+    hooks_file="$HOME/.codex/hooks.json"
+    if [[ -f "$hooks_file" && -n "$(tail -c 1 "$hooks_file")" ]]; then
+        printf '\n' >> "$hooks_file"
+    fi
 fi

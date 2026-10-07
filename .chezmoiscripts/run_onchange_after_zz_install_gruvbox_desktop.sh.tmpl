@@ -11,52 +11,91 @@ if [[ {{ $profile | quote }} != "fedora-sway" || ! -f /etc/fedora-release ]]; th
     exit 0
 fi
 
-# Re-run when the bundled theme, icon source, or system font changes.
-# GTK theme archive SHA-256: 5f492971fb0e564323aa81a79d35dafb0bf64ab85b966da69c41f43947954000
-# Gruvbox GTK source: 578cd220b5ff6e86b078a6111d26bb20ec8c733f
-# Source archive SHA-256: f45da23a6c4123148cf8f78983e391a86c2e2ee1b7a80aa66790f148cb9619bd
+# Gruvbox Material GTK source commit: bb306ae972273cbfcbf78f8b772662e8b0678d82
+# Source archive SHA-256: 67126883eebaa480aa1ff85e3582aba1c2ea7b44ff41bc1afc139ee77ab05568
 
-source_dir={{ .chezmoi.sourceDir | quote }}
-theme_archive="$source_dir/assets/Gruvbox-Yellow-Dark-Compact-Medium.tar.gz"
+archive_sha=67126883eebaa480aa1ff85e3582aba1c2ea7b44ff41bc1afc139ee77ab05568
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles"
+archive="$cache_dir/gruvbox-material-bb306ae972273cbfcbf78f8b772662e8b0678d82.tar.gz"
+download=""
+staging=""
+cleanup() {
+    [[ -z "$download" ]] || rm -f -- "$download"
+    [[ -z "$staging" ]] || rm -rf -- "$staging"
+}
+trap cleanup EXIT
+mkdir -p "$cache_dir"
+staging="$(mktemp -d /tmp/gruvbox-material.XXXXXX)"
 
-if [[ ! -f "$theme_archive" ]]; then
-    printf 'Missing bundled GTK theme: %s\n' "$theme_archive" >&2
-    exit 1
+if [[ ! -f "$archive" ]] || ! printf '%s  %s\n' "$archive_sha" "$archive" | sha256sum --check --status; then
+    download="$(mktemp "$cache_dir/gruvbox-material.XXXXXX")"
+    curl -fL --retry 3 \
+        --output "$download" \
+        https://github.com/TheGreatMcPain/gruvbox-material-gtk/archive/bb306ae972273cbfcbf78f8b772662e8b0678d82.tar.gz
+
+    printf '%s  %s\n' "$archive_sha" "$download" | sha256sum --check --status
+    mv -f -- "$download" "$archive"
+    download=""
 fi
 
-mkdir -p "$HOME/.themes"
-tar -xzf "$theme_archive" -C "$HOME/.themes" --no-same-owner
+tar -xzf "$archive" \
+    --directory "$staging" \
+    --strip-components=1 \
+    --no-same-owner \
+    'gruvbox-material-gtk-bb306ae972273cbfcbf78f8b772662e8b0678d82/themes/Gruvbox-Material-Dark' \
+    'gruvbox-material-gtk-bb306ae972273cbfcbf78f8b772662e8b0678d82/icons/Gruvbox-Material-Dark'
 
-icon_archive="$(mktemp /tmp/gruvbox-gtk-theme.XXXXXX.tar.gz)"
-icon_staging="$(mktemp -d /tmp/gruvbox-icons.XXXXXX)"
+# The upstream GTK port uses Material's medium background. Shift its dark
+# background, selection, and diff colors to Gruvbox Material's hard contrast.
+for stylesheet in \
+    "$staging/themes/Gruvbox-Material-Dark"/gtk-*/gtk.css \
+    "$staging/themes/Gruvbox-Material-Dark"/gtk-2.0/gtkrc; do
+    sed -i \
+        -e 's/#1b1b1b/__GM_DIM__/g' \
+        -e 's/#282828/__GM_BG0__/g' \
+        -e 's/#32302f/__GM_BG1__/g' \
+        -e 's/#3c3836/__GM_BG2__/g' \
+        -e 's/#45403d/__GM_BG3__/g' \
+        -e 's/#5a524c/__GM_BG5__/g' \
+        -e 's/#3a3735/__GM_STATUS__/g' \
+        -e 's/#4c3432/__GM_VIS_RED__/g' \
+        -e 's/#4f422e/__GM_VIS_YELLOW__/g' \
+        -e 's/#3b4439/__GM_VIS_GREEN__/g' \
+        -e 's/#374141/__GM_VIS_BLUE__/g' \
+        -e 's/#443840/__GM_VIS_PURPLE__/g' \
+        -e 's/#402120/__GM_DIFF_RED__/g' \
+        -e 's/#34381b/__GM_DIFF_GREEN__/g' \
+        -e 's/#0e363e/__GM_DIFF_BLUE__/g' \
+        -e 's/__GM_BG0__/#1d2021/g' \
+        -e 's/__GM_BG1__/#282828/g' \
+        -e 's/__GM_BG2__/#32302f/g' \
+        -e 's/__GM_BG3__/#3c3836/g' \
+        -e 's/__GM_BG5__/#504945/g' \
+        -e 's/__GM_DIM__/#141617/g' \
+        -e 's/__GM_STATUS__/#32302f/g' \
+        -e 's/__GM_VIS_RED__/#442e2d/g' \
+        -e 's/__GM_VIS_YELLOW__/#473c29/g' \
+        -e 's/__GM_VIS_GREEN__/#333e34/g' \
+        -e 's/__GM_VIS_BLUE__/#2e3b3b/g' \
+        -e 's/__GM_VIS_PURPLE__/#3c333b/g' \
+        -e 's/__GM_DIFF_RED__/#3c1f1e/g' \
+        -e 's/__GM_DIFF_GREEN__/#32361a/g' \
+        -e 's/__GM_DIFF_BLUE__/#0d3138/g' \
+        "$stylesheet"
+done
 
-curl -fL --retry 3 \
-    --output "$icon_archive" \
-    https://github.com/Fausto-Korpsvart/Gruvbox-GTK-Theme/archive/578cd220b5ff6e86b078a6111d26bb20ec8c733f.tar.gz
-
-printf '%s  %s\n' \
-    f45da23a6c4123148cf8f78983e391a86c2e2ee1b7a80aa66790f148cb9619bd \
-    "$icon_archive" | sha256sum --check --status
-
-tar -xzf "$icon_archive" \
-    --directory "$icon_staging" \
-    --strip-components=2 \
-    'Gruvbox-GTK-Theme-578cd220b5ff6e86b078a6111d26bb20ec8c733f/icons/Gruvbox_Dark'
-
-mkdir -p "$HOME/.local/share/icons/Gruvbox_Dark"
-cp -a "$icon_staging/Gruvbox_Dark/." "$HOME/.local/share/icons/Gruvbox_Dark/"
+mkdir -p "$HOME/.themes" "$HOME/.local/share/icons"
+cp -a "$staging/themes/Gruvbox-Material-Dark" "$HOME/.themes/"
+cp -a "$staging/icons/Gruvbox-Material-Dark" "$HOME/.local/share/icons/"
 
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache --force "$HOME/.local/share/icons/Gruvbox_Dark"
+    gtk-update-icon-cache --force "$HOME/.local/share/icons/Gruvbox-Material-Dark"
 fi
-
-rm -r -- "$icon_staging"
-rm -- "$icon_archive"
 
 if command -v gsettings >/dev/null 2>&1; then
     gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-    gsettings set org.gnome.desktop.interface gtk-theme 'Gruvbox-Yellow-Dark-Compact-Medium'
-    gsettings set org.gnome.desktop.interface icon-theme 'Gruvbox_Dark'
+    gsettings set org.gnome.desktop.interface gtk-theme 'Gruvbox-Material-Dark'
+    gsettings set org.gnome.desktop.interface icon-theme 'Gruvbox-Material-Dark'
     gsettings set org.gnome.desktop.interface font-name 'IoskeleyMonoTerm Nerd Font Mono 10'
 fi
 

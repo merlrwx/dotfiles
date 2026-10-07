@@ -27,6 +27,9 @@ attach_line="$(grep -nF '[[ ${BLE_VERSION-} ]] && ble-attach' "$bashrc" | cut -d
 grep -Fq "bind -x '\"\\C-l\":clear'" "$bashrc" || fail 'Ctrl-L binding missing'
 grep -Fq '/usr/share/bash-completion/bash_completion' "$bashrc" || fail 'bash-completion source missing'
 grep -Fq 'complete -o default -F __start_kubectl k' "$bashrc" || fail 'kubectl completion missing'
+grep -Fq 'complete -o default -F __dotfiles_load_kubectl_completion kubectl k' "$bashrc" || fail 'kubectl fallback is not lazy-loaded'
+grep -Fq '[[ -z ${SSH_AUTH_SOCK:-} && -r "$HOME/.ssh/id_ed25519" ]]' "$bashrc" || fail 'SSH agent startup is not guarded by an inherited socket and key file'
+grep -Fq 'tmux set-environment -g SSH_AUTH_SOCK "$SSH_AUTH_SOCK"' "$bashrc" || fail 'SSH agent socket is not shared with future tmux panes'
 
 for setting in \
     'complete_menu_complete=1' \

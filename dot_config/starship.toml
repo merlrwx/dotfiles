@@ -1,9 +1,6 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# Gruvbox Material Dark palette, coordinated with Alacritty and ble.sh:
-# hard background #1d2021, surface #32302f, foreground #d4be98,
-# muted #a89984, subtle #928374, red #d2746e, green #9eaa72,
-# amber #c1a06d, blue #718b91, aqua #89a58e, purple #b88c9b.
+# Gruvbox Material Dark Hard: terminal background #1d2021, foreground #d4be98.
 
 format = """
 ($username$hostname${custom.remote_host} )\
@@ -19,7 +16,7 @@ $character"""
 [username]
 format = '[$user]($style)'
 style_user = "#928374"
-style_root = "#d2746e"
+style_root = "#ea6962"
 detect_env_vars = ["REMOTE_CONTAINERS"]
 
 [hostname]
@@ -34,20 +31,20 @@ style = "#928374"
 os = "linux"
 
 [directory]
-style = "#c1ac83"
+style = "#d4be98"
 
 [character]
-success_symbol = "[❯](#9eaa72)"
-error_symbol = "[❯](#d2746e)"
-vimcmd_symbol = "[❮](#b88c9b)"
+success_symbol = "[❯](#a9b665)"
+error_symbol = "[❯](#ea6962)"
+vimcmd_symbol = "[❮](#d3869b)"
 
 [git_branch]
 format = "[ $branch]($style)"
-style = "#718b91"
+style = "#7daea3"
 
 [git_status]
-format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#c1a06d) ($ahead_behind$stashed)]($style)"
-style = "#c1a06d"
+format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#d8a657) ($ahead_behind$stashed)]($style)"
+style = "#d8a657"
 conflicted = "​"
 untracked = "​"
 modified = "​"

@@ -30,29 +30,22 @@ for package in thunar thunar-archive-plugin tumbler gvfs gvfs-smb exo xarchiver 
     fi
 done
 
-theme_archive="$repo_root/assets/Gruvbox-Yellow-Dark-Compact-Medium.tar.gz"
-expected_theme_sha=5f492971fb0e564323aa81a79d35dafb0bf64ab85b966da69c41f43947954000
-actual_theme_sha="$(sha256sum "$theme_archive" | cut -d' ' -f1)"
-if [[ "$actual_theme_sha" != "$expected_theme_sha" ]]; then
-    printf 'GTK theme checksum mismatch: %s\n' "$actual_theme_sha" >&2
-    exit 1
-fi
-
-theme_archive_listing="$(tar -tzf "$theme_archive")"
-for theme in \
-    Gruvbox-Yellow-Dark-Compact-Medium \
-    Gruvbox-Yellow-Dark-Compact-Medium-hdpi \
-    Gruvbox-Yellow-Dark-Compact-Medium-xhdpi; do
-    if ! grep -q "^${theme}/" <<<"$theme_archive_listing"; then
-        printf 'GTK theme archive is missing: %s\n' "$theme" >&2
-        exit 1
-    fi
-done
-
 desktop_script="$repo_root/.chezmoiscripts/run_onchange_after_zz_install_gruvbox_desktop.sh.tmpl"
+expected_theme_sha=67126883eebaa480aa1ff85e3582aba1c2ea7b44ff41bc1afc139ee77ab05568
+grep -Fq 'TheGreatMcPain/gruvbox-material-gtk/archive/bb306ae972273cbfcbf78f8b772662e8b0678d82.tar.gz' "$desktop_script"
+grep -Fq "$expected_theme_sha" "$desktop_script"
+grep -Fq 'cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles"' "$desktop_script"
+grep -Fq 'mv -f -- "$download" "$archive"' "$desktop_script"
+grep -Fq 'themes/Gruvbox-Material-Dark' "$desktop_script"
+grep -Fq 'icons/Gruvbox-Material-Dark' "$desktop_script"
+grep -Fq 's/#282828/__GM_BG0__/g' "$desktop_script"
+grep -Fq 's/__GM_BG0__/#1d2021/g' "$desktop_script"
+grep -Fq 's/__GM_BG1__/#282828/g' "$desktop_script"
 grep -Fq "color-scheme 'prefer-dark'" "$desktop_script"
-grep -Fq "gtk-theme 'Gruvbox-Yellow-Dark-Compact-Medium'" "$desktop_script"
-grep -Fq "icon-theme 'Gruvbox_Dark'" "$desktop_script"
+grep -Fq "gtk-theme 'Gruvbox-Material-Dark'" "$desktop_script"
+grep -Fq "icon-theme 'Gruvbox-Material-Dark'" "$desktop_script"
+grep -Fq 'gtk-theme-name=Gruvbox-Material-Dark' "$repo_root/dot_config/gtk-3.0/settings.ini"
+grep -Fq 'gtk-theme-name=Gruvbox-Material-Dark' "$repo_root/dot_config/gtk-4.0/settings.ini"
 grep -Fq 'xdg-mime default thunar.desktop inode/directory' "$desktop_script"
 
 printf 'Desktop portability checks passed.\n'

@@ -26,9 +26,6 @@ export VISUAL=nvim
 export REPOS="$HOME/jd/20-29-code/repos"
 export DOTFILES="$HOME/.dotfiles"
 
-# Add local scripts/apps to PATH
-export PATH="$HOME/.local/bin:$PATH"
-
 # Bash history
 export HISTFILE="$HOME/.bash_history"
 export HISTSIZE=25000
@@ -90,24 +87,30 @@ herdr() {
 }
 
 
-# Golang environment variables
-export GOPATH=$HOME/go
+# Add local scripts/apps and Go binaries to PATH without duplicating entries
+# when this file is sourced again.
+export GOPATH="${GOPATH:-$HOME/go}"
+__dotfiles_prepend_path() {
+    case ":$PATH:" in
+        *":$1:"*) ;;
+        *) PATH="$1:$PATH" ;;
+    esac
+}
+__dotfiles_prepend_path "$HOME/.local/bin"
+[[ -z ${GOROOT:-} ]] || __dotfiles_prepend_path "$GOROOT/bin"
+__dotfiles_prepend_path "$GOPATH/bin"
+export PATH
+unset -f __dotfiles_prepend_path
 
-# Update PATH to include GOPATH and GOROOT binaries
-export PATH=$GOPATH/bin:$GOROOT/bin:$HOME/.local/bin:$PATH
-
-# Fabric
-# Loop through all files in the ~/.config/fabric/patterns directory
-for pattern_file in $HOME/.config/fabric/patterns/*; do
-    # Get the base name of the file (i.e., remove the directory path)
-    pattern_name="$(basename "$pattern_file")"
+# Fabric pattern aliases
+for pattern_file in "$HOME"/.config/fabric/patterns/*; do
+    [[ -f "$pattern_file" ]] || continue
+    pattern_name="${pattern_file##*/}"
     alias_name="${FABRIC_ALIAS_PREFIX:-}${pattern_name}"
 
-    # Create an alias in the form: alias pattern_name="fabric --pattern pattern_name"
-    alias_command="alias $alias_name='fabric --pattern $pattern_name'"
-
-    # Evaluate the alias command to add it to the current shell
-    eval "$alias_command"
+    [[ "$alias_name" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$ ]] || continue
+    printf -v pattern_argument '%q' "$pattern_name"
+    alias "$alias_name=fabric --pattern $pattern_argument"
 done
 
 yt() {
@@ -138,17 +141,27 @@ fi
 if [ -f /usr/share/bash-completion/completions/kubectl ]; then
     source /usr/share/bash-completion/completions/kubectl
 elif command -v kubectl >/dev/null 2>&1; then
-    source <(kubectl completion bash)
+    __dotfiles_load_kubectl_completion() {
+        unset -f __dotfiles_load_kubectl_completion
+        source <(kubectl completion bash)
+        complete -o default -F __start_kubectl k
+        __start_kubectl "$@"
+    }
+    complete -o default -F __dotfiles_load_kubectl_completion kubectl k
 fi
 
-complete -o default -F __start_kubectl k
+if declare -F __start_kubectl >/dev/null; then
+    complete -o default -F __start_kubectl k
+fi
 
 # SSH agent
-if [ -z "$SSH_AUTH_SOCK" ]; then
+if [[ -z ${SSH_AUTH_SOCK:-} && -r "$HOME/.ssh/id_ed25519" ]]; then
     eval "$(ssh-agent -s)" >/dev/null
+    ssh-add "$HOME/.ssh/id_ed25519" >/dev/null 2>&1
+    if [[ -n ${TMUX:-} ]]; then
+        tmux set-environment -g SSH_AUTH_SOCK "$SSH_AUTH_SOCK" 2>/dev/null
+    fi
 fi
-
-ssh-add -l >/dev/null 2>&1 || ssh-add ~/.ssh/id_ed25519 >/dev/null 2>&1
 
 # Auto-start tmux in Alacritty (only if not already in tmux)
 if [[ -z "$TMUX" ]] && [[ "$TERM" == "alacritty" ]]; then
@@ -163,11 +176,6 @@ fi
 # starship
 if command -v starship >/dev/null 2>&1; then
   eval "$(starship init bash)"
-fi
-
-# fabric
-if [ -f /path/to/fabric/completions/fabric.bash ]; then
-    source /path/to/fabric/completions/fabric.bash
 fi
 
 # Docker helpers

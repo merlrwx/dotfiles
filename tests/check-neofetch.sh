@@ -20,7 +20,7 @@ grep -Fq '3dc33493e54029fb1528251552093a9f9a2894fcf94f9c3a6f809136a42348c7' "$ex
 
 grep -Fq 'image_backend="ascii"' "$config" || fail 'ASCII backend is not enabled'
 grep -Fq 'image_source="$HOME/.config/neofetch/cat"' "$config" || fail 'custom cat logo is not configured'
-grep -Fq 'ascii_colors=(8 11)' "$config" || fail 'logo colors do not match Gruvbox Dark grey and amber'
+grep -Fq 'ascii_colors=(8 11)' "$config" || fail 'logo colors do not match Gruvbox Material Hard grey and yellow'
 grep -Fq '${c1}' "$cat_logo" || fail 'cat outline has no muted color marker'
 grep -Fq '${c2}' "$cat_logo" || fail 'cat eyes have no accent color marker'
 grep -Fq 'o' "$cat_logo" || fail 'cat eyes are missing'

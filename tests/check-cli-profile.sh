@@ -34,6 +34,7 @@ shared_paths=(
     .config/yazi/yazi.toml
     .config/yazi/flavors/gruvbox-material.yazi/flavor.toml
     .codex/config.toml
+    .codex/themes/gruvbox-material-hard.tmTheme
 )
 
 desktop_paths=(
@@ -180,12 +181,16 @@ if ! bash -n <<<"$rendered_cli_dependencies_script"; then
     printf 'CLI dependency installer has invalid Bash syntax.\n' >&2
     exit 1
 fi
-for tool in neovim yazi fd fzf lazygit ripgrep zoxide jq; do
+for tool in neovim yazi fd fzf lazygit ripgrep jq; do
     if ! grep -Eq "^${tool} = \"latest\"$" "$repo_root/dot_config/mise/config.toml"; then
         printf 'mise config is missing CLI tool: %s\n' "$tool" >&2
         exit 1
     fi
 done
+if grep -Eq '^zoxide[[:space:]]*=' "$repo_root/dot_config/mise/config.toml"; then
+    printf 'mise config still installs zoxide.\n' >&2
+    exit 1
+fi
 for package in file build-essential gcc make unzip; do
     if ! grep -Fq "$package" "$cli_dependencies_script"; then
         printf 'CLI dependency installer is missing system package: %s\n' "$package" >&2
@@ -204,6 +209,8 @@ grep -Fq 'vim.opt.clipboard = "unnamedplus"' "$repo_root/dot_config/nvim/lua/con
 grep -Fq 'dark = "gruvbox-material"' "$repo_root/dot_config/yazi/theme.toml"
 grep -Fq 'vim.g.gruvbox_material_background = "hard"' \
     "$repo_root/dot_config/nvim/lua/plugins/gruvbox_material.lua"
+grep -Fq "let g:gruvbox_material_background = 'hard'" \
+    "$repo_root/dot_vimrc"
 grep -Fq 'vim.opt.background = "dark"' \
     "$repo_root/dot_config/nvim/lua/plugins/gruvbox_material.lua"
 

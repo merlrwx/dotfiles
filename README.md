@@ -7,8 +7,8 @@ only for the `fedora-sway` profile.
 
 The Bash stack uses ble.sh for interactive editing, Vim-mode enhancements,
 syntax highlighting, autosuggestions, and menu completion. Existing Bash and
-kubectl completion scripts provide candidates; Starship owns the prompt, fzf
-remains an explicit fuzzy picker, and zoxide handles directory navigation.
+kubectl completion scripts provide candidates; Starship owns the prompt, and fzf
+remains an explicit fuzzy picker.
 
 ## Fresh Fedora setup
 
@@ -56,8 +56,10 @@ sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/merlrwx/
 ```
 
 The CLI profile manages Bash, Vim, Neovim with LazyVim, Yazi, tmux, mise,
-Starship, Herdr, and Codex configuration. Neovim and Yazi use the same dark
-Gruvbox Material palette as Vim. It skips Sway, Waybar, Rofi, GTK, Thunar,
+Starship, Herdr, and Codex configuration. The shell, Vim, Neovim, Yazi, and
+Codex syntax highlighting use Gruvbox Material dark hard. The Fedora Sway
+profile adds matching Alacritty, Waybar, Rofi, and GTK theming. The CLI profile
+skips Sway, Waybar, Rofi, GTK, Thunar,
 Alacritty, wallpaper, desktop entries, and Fedora desktop package/theme
 installation. The profile is stored in the local chezmoi config, so later
 applies do not ask again.
@@ -70,8 +72,8 @@ do not install DevPod.
 
 - Sway configuration and portable key bindings (`fedora-sway` profile)
 - Waybar configuration and styling
-- Rofi configuration and Gruvbox theme
-- Gruvbox GTK and icon themes, system dark mode, and Ioskeley Mono UI font
+- Rofi configuration and Gruvbox Material theme
+- Gruvbox Material GTK and icon themes, system dark mode, and Ioskeley Mono UI font
 - Thunar, its stable preferences and custom actions, and the directory file association
 - Swaylock wallpaper configuration and Swayidle behavior
 - Alacritty, Bash, Vim, LazyVim/Neovim, Yazi, tmux, Starship, and mise

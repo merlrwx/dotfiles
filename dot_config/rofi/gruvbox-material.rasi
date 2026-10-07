@@ -1,7 +1,7 @@
 * {
-    bg: #282828ee;
-    bg-alt: #32302f;
-    fg: #ebdbb2;
+    bg: #1d2021ee;
+    bg-alt: #282828;
+    fg: #d4be98;
     muted: #a89984;
     accent: #d8a657;
     border: #504945;
@@ -12,7 +12,7 @@ window {
     border: 2px;
     border-color: #504945;
     border-radius: 10px;
-    background-color: #282828f2;
+    background-color: #1d2021f2;
 }
 
 mainbox {
@@ -24,20 +24,20 @@ mainbox {
 inputbar {
     padding: 10px;
     border-radius: 7px;
-    background-color: #32302fee;
+    background-color: #282828ee;
     children: [ prompt, entry ];
 }
 
 prompt {
     padding: 0 10px 0 0;
     text-color: @accent;
-    background-color: #282828;
+    background-color: #1d2021;
 }
 
 entry {
     border: 0;
     border-radius: 4px;
-    background-color: #282828;
+    background-color: #1d2021;
     text-color: @fg;
     placeholder: "Launch…";
     placeholder-color: @muted;
@@ -62,11 +62,11 @@ element-text {
 }
 
 element selected element-text {
-    text-color: #282828;
+    text-color: #1d2021;
 }
 
 element-text selected {
-    text-color: #282828;
+    text-color: #1d2021;
 }
 
 element-icon {
@@ -77,5 +77,5 @@ element-icon {
 
 element selected {
     background-color: @accent;
-    text-color: #282828;
+    text-color: #1d2021;
 }
