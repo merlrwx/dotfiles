@@ -1,12 +1,12 @@
 # Autonomous Goals
 
 `agent-goal` keeps a small, repository-local goal contract and fixed verifier.
-Codex and Pi each continue an active goal using their native lifecycle hook; the
-goal files and verification command stay the same.
+Codex is the default implementation harness. Pi supports plan work and recovery
+against the same goal state; it does not spawn another agent.
 
 ## Workflow
 
-For a clear task, start with:
+For a clear implementation task, start in Codex with:
 
 ```text
 $autonomous-goal Implement <outcome>. Do not commit or deploy.
@@ -76,10 +76,13 @@ Only use `block` for an unavailable external dependency. A failed approach or
 test is part of the work: fix it, update progress, and continue. Ctrl-C remains
 available as an immediate manual interruption.
 
-The Codex Stop hook and Pi `agent_before_settle` extension continue only while
+The Codex Stop hook continues an active implementation goal only while
 `.agent/ACTIVE` is valid and no `COMPLETE`, `PAUSE`, or `BLOCKED.md` marker
-exists. Pi also checks that the verifier remains inside the repository and
-matches the activated digest.
+exists. Pi's `agent_before_settle` extension is a recovery compatibility path:
+it continues the goal only when Pi is deliberately opened in that active
+worktree. Do plan grilling before activation or in a separate worktree. Pi also
+checks that the verifier remains inside the repository and matches the
+activated digest.
 
 ## Git and authority
 
