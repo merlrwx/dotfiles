@@ -1,9 +1,9 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# Muted Gruvbox Dark palette, coordinated with the terminal's Gruvbox Dark:
-# foreground #d5c4a1, muted #a89984, subtle #928374, red #ea6962,
-# green #a9b665, yellow #d8a657, blue #7daea3, aqua #83a598,
-# purple #d3869b.
+# Gruvbox Material Dark palette, coordinated with Alacritty and ble.sh:
+# hard background #1d2021, surface #32302f, foreground #d4be98,
+# muted #a89984, subtle #928374, red #ea6962, green #a9b665,
+# amber #d8a657, blue #7daea3, aqua #89b482, purple #d3869b.
 
 format = """
 ($username$hostname${custom.remote_host} )\
@@ -18,19 +18,19 @@ $character"""
 
 [username]
 format = '[$user]($style)'
-style_user = "#a89984"
+style_user = "#928374"
 style_root = "#ea6962"
 detect_env_vars = ["REMOTE_CONTAINERS"]
 
 [hostname]
 format = '[@$hostname]($style)'
-style = "#a89984"
+style = "#928374"
 
 [custom.remote_host]
 command = 'printf "%s" "${DEVPOD_WORKSPACE_ID:-$(hostname -s)}"'
 when = 'test -n "$REMOTE_CONTAINERS"'
 format = '[@$output]($style)'
-style = "#a89984"
+style = "#928374"
 os = "linux"
 
 [directory]
@@ -47,7 +47,7 @@ style = "#7daea3"
 
 [git_status]
 format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#d3869b) ($ahead_behind$stashed)]($style)"
-style = "#d3869b"
+style = "#ea6962"
 conflicted = "​"
 untracked = "​"
 modified = "​"

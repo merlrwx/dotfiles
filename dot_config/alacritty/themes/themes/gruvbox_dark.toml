@@ -1,11 +1,11 @@
-# Gruvbox Material Dark (medium contrast, material foreground)
+# Gruvbox Material Dark (hard contrast, material foreground)
 
 [colors.primary]
-background = '#282828'
+background = '#1d2021'
 foreground = '#d4be98'
 
 [colors.normal]
-black   = '#3c3836'
+black   = '#32302f'
 red     = '#ea6962'
 green   = '#a9b665'
 yellow  = '#d8a657'
@@ -29,5 +29,5 @@ text = '#d4be98'
 background = '#504945'
 
 [colors.cursor]
-text = '#282828'
+text = '#1d2021'
 cursor = '#d8a657'
