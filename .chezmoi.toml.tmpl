@@ -8,3 +8,4 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
 
 [data]
     profile = {{ $profile | quote }}
+    agent_host = {{ eq .chezmoi.hostname "agentbox" }}

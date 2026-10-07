@@ -128,6 +128,31 @@ if ! grep -Fq 'profile = "cli"' <<<"$generated_config"; then
     printf 'Profile prompt did not save the selected CLI profile.\n' >&2
     exit 1
 fi
+if ! grep -Eq '^    agent_host = (true|false)$' <<<"$generated_config"; then
+    printf 'Generated config did not set the agent_host flag.\n' >&2
+    exit 1
+fi
+
+devpod_script="$repo_root/.chezmoiscripts/run_onchange_after_install_devpod.sh.tmpl"
+rendered_devpod_script="$(chezmoi --source "$repo_root" \
+    --override-data '{"profile":"cli","agent_host":true}' \
+    execute-template <"$devpod_script")"
+if ! bash -n <<<"$rendered_devpod_script"; then
+    printf 'DevPod installer has invalid Bash syntax.\n' >&2
+    exit 1
+fi
+if ! grep -Fq 'v0.6.15' <<<"$rendered_devpod_script" || \
+    ! grep -Fq 'devpod-linux-amd64' <<<"$rendered_devpod_script"; then
+    printf 'Agent host installer does not use the pinned DevPod Linux release.\n' >&2
+    exit 1
+fi
+rendered_non_agent_script="$(chezmoi --source "$repo_root" \
+    --override-data '{"profile":"cli","agent_host":false}' \
+    execute-template <"$devpod_script")"
+if [[ -n "$rendered_non_agent_script" ]]; then
+    printf 'DevPod installer should be omitted on non-agent CLI hosts.\n' >&2
+    exit 1
+fi
 
 package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_packages.sh.tmpl"
 rendered_package_script="$(chezmoi --source "$repo_root" execute-template <"$package_script")"

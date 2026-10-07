@@ -62,6 +62,10 @@ Alacritty, wallpaper, desktop entries, and Fedora desktop package/theme
 installation. The profile is stored in the local chezmoi config, so later
 applies do not ask again.
 
+On a host named `agentbox`, the local chezmoi config also sets `agent_host = true`
+and installs the pinned DevPod v0.6.15 CLI into `~/.local/bin`. Other CLI hosts
+do not install DevPod.
+
 ## What is managed
 
 - Sway configuration and portable key bindings (`fedora-sway` profile)
