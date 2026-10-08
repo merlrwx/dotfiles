@@ -1,0 +1,29 @@
+# This is a small interactive overlay for DevPod, not the host Bash profile.
+[[ $- != *i* ]] && return
+
+set -o vi
+
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+
+if command -v nvim >/dev/null 2>&1; then
+    export EDITOR=nvim
+    export VISUAL=nvim
+elif command -v vim >/dev/null 2>&1; then
+    export EDITOR=vim
+    export VISUAL=vim
+fi
+
+export REMOTE_CONTAINERS="${REMOTE_CONTAINERS:-true}"
+export DEVPOD_WORKSPACE_ID="${DEVPOD_WORKSPACE_ID:-$(hostname -s)}"
+
+alias c='clear'
+alias ..='cd ..'
+alias gs='git status --short --branch'
+alias gl='git log --oneline --graph --decorate -20'
+
+if command -v starship >/dev/null 2>&1; then
+    eval "$(starship init bash)"
+fi
