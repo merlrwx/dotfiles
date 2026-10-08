@@ -251,8 +251,12 @@ client.
 
 Bash uses ble.sh for interactive editing and completion, including syntax
 highlighting, suggestions, and the navigable menu; Starship owns the prompt and
-uses portable ASCII `>` and `git:<branch>` markers. Register native Bash
-providers in `~/.config/bash/completions/init.sh` with
+uses a portable ASCII `>` plus a parenthesized branch such as `(main)`. Git
+status appears as colored labels when relevant: `+` staged, `!` modified, `?`
+untracked, `^` ahead, `v` behind, and `<>` diverged; `up to date` means the
+branch matches its remote. Conflicts, renames, deletions, type changes, and
+stashes are named as well. Register native Bash providers in
+`~/.config/bash/completions/init.sh` with
 `command <tool> completion bash`; add wrappers there when runtime candidates are
 missing.
 At an idle prompt, Ctrl+C cancels the current line in both vi editing modes. The

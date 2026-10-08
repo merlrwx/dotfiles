@@ -39,19 +39,24 @@ error_symbol = "[>](#ea6962)"
 vimcmd_symbol = "[<](#d3869b)"
 
 [git_branch]
-format = "[git:$branch]($style)"
-style = "#7daea3"
+format = '[\($branch\)]($style) '
+style = "bold #7daea3"
 
 [git_status]
-format = "[[(*$conflicted$untracked$modified$staged$renamed$deleted)](#d8a657) ($ahead_behind$stashed)]($style)"
-style = "#d8a657"
-conflicted = "​"
-untracked = "​"
-modified = "​"
-staged = "​"
-renamed = "​"
-deleted = "​"
-stashed = "≡"
+format = "$conflicted$untracked$modified$staged$renamed$deleted$typechanged$ahead_behind$stashed"
+conflicted = "[CONFLICT ${count}](bold #ea6962) "
+untracked = "[? ${count} untracked](bold #d8a657) "
+modified = "[! ${count} modified](bold #e78a4e) "
+staged = "[+ ${count} staged](bold #a9b665) "
+renamed = "[> ${count} renamed](#7daea3) "
+deleted = "[- ${count} deleted](bold #ea6962) "
+typechanged = "[~ ${count} type-changed](#d3869b) "
+ahead = "[^ ${count} ahead](bold #a9b665) "
+behind = "[v ${count} behind](bold #e78a4e) "
+diverged = "[<> ${ahead_count} ahead/${behind_count} behind](bold #ea6962) "
+up_to_date = "[up to date](bold #a9b665) "
+stashed = "[= ${count} stashed](#928374) "
+style = "#d4be98"
 
 [git_state]
 format = '\([$state( $progress_current/$progress_total)]($style)\) '
