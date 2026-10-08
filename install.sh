@@ -43,6 +43,15 @@ if ! command -v codex >/dev/null 2>&1 && [[ ! -x "$codex_install_dir/codex" ]]; 
     curl -fsSL https://chatgpt.com/codex/install.sh | sh
 fi
 
+pi_install_dir="$HOME/.local/bin"
+if ! command -v pi >/dev/null 2>&1 && [[ ! -x "$pi_install_dir/pi" ]]; then
+    command -v curl >/dev/null 2>&1 || {
+        printf 'curl is required to install Pi in this workspace.\n' >&2
+        exit 1
+    }
+    curl -fsSL https://pi.dev/install.sh | sh
+fi
+
 if [[ ! -f "$HOME/.bashrc" ]]; then
     install -Dm0644 /dev/null "$HOME/.bashrc"
 fi

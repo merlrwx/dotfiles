@@ -70,14 +70,14 @@ devpod context set-options \
   -o DOTFILES_SCRIPT=install.sh
 ```
 
-The workspace installer adds Codex, a small Bash overlay, Gruvbox Material
-Starship and Neovim settings, Git defaults, shared agent instructions, and a
-minimal Codex theme config. It does not install the host `mise` tool set,
-Herdr, or homelab MCP configuration. It never copies host Codex auth, Git,
-SSH, Docker, or provider credentials. DevPod provides HTTPS Git credential
-helpers, SSH agent forwarding, and Docker credential forwarding where
-supported. GitHub/GitLab API CLI sign-ins and other provider credentials need
-their own supported auth flow; they are not the Git credential helper.
+The workspace installer adds Codex and Pi, a small Bash overlay, Gruvbox
+Material Starship and Neovim settings, Git defaults, shared agent instructions,
+and a minimal Codex theme config. It does not install the host `mise` tool set,
+Herdr, or homelab MCP configuration. It never copies host agent auth or MCP
+files, Git, SSH, Docker, or provider credentials. DevPod provides HTTPS Git
+credential helpers, SSH agent forwarding, and Docker credential forwarding
+where supported. GitHub/GitLab API CLI sign-ins and other provider credentials
+need their own supported auth flow; they are not the Git credential helper.
 See [DevPod dotfiles](https://devpod.sh/docs/developing-in-workspaces/dotfiles-in-a-workspace)
 and [DevPod credential forwarding](https://devpod.sh/docs/developing-in-workspaces/credentials).
 
@@ -132,6 +132,10 @@ on first use run `codex login --device-auth` and finish the device flow. Its
 auth stays in that workspace and is never copied from the host. See the
 [Codex CLI install guide](https://learn.chatgpt.com/docs/codex/cli) and
 [login reference](https://learn.chatgpt.com/docs/developer-commands).
+
+To try Pi in a worker, run `pi` from its task worktree and use `/login` on
+first start. Pi and Codex have separate workspace sign-ins; choose one harness
+per worktree. See the [Pi quickstart](https://pi.dev/docs/latest/quickstart).
 
 GitHub/GitLab API CLIs and cloud CLIs have their own authentication. If a task
 needs them, install the required CLI in that project's DevContainer and use its

@@ -28,9 +28,10 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     fake_curl.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "[[ \"$*\" == '-fsSL https://chatgpt.com/codex/install.sh' ]] || exit 9\n"
-        "printf 'installed\\n' >>\"$HOME/codex-installer-calls\"\n"
-        "cat <<'INSTALLER'\n"
+        "case \"$*\" in\n"
+        "  '-fsSL https://chatgpt.com/codex/install.sh')\n"
+        "    printf 'installed\\n' >>\"$HOME/codex-installer-calls\"\n"
+        "    cat <<'INSTALLER'\n"
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         "install -d -m 0755 \"$CODEX_INSTALL_DIR\"\n"
@@ -40,6 +41,21 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "CODEX\n"
         "chmod 0755 \"$CODEX_INSTALL_DIR/codex\"\n"
         "INSTALLER\n"
+        "    ;;\n"
+        "  '-fsSL https://pi.dev/install.sh')\n"
+        "    cat <<'INSTALLER'\n"
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "install -d -m 0755 \"$HOME/.local/bin\"\n"
+        "cat >\"$HOME/.local/bin/pi\" <<'PI'\n"
+        "#!/usr/bin/env bash\n"
+        "printf 'pi-test\\n'\n"
+        "PI\n"
+        "chmod 0755 \"$HOME/.local/bin/pi\"\n"
+        "INSTALLER\n"
+        "    ;;\n"
+        "  *) exit 9 ;;\n"
+        "esac\n"
     )
     fake_curl.chmod(0o755)
 
@@ -130,6 +146,9 @@ with TemporaryDirectory(prefix="devpod-existing-codex-") as temp_dir:
     fake_codex = fake_bin / "codex"
     fake_codex.write_text("#!/usr/bin/env bash\nexit 0\n")
     fake_codex.chmod(0o755)
+    fake_pi = fake_bin / "pi"
+    fake_pi.write_text("#!/usr/bin/env bash\nexit 0\n")
+    fake_pi.chmod(0o755)
     fake_curl = fake_bin / "curl"
     fake_curl.write_text("#!/usr/bin/env bash\nexit 8\n")
     fake_curl.chmod(0o755)
