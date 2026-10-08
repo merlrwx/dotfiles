@@ -246,6 +246,19 @@ if [[ "$browser_output" != "host-browser" ]]; then
     exit 1
 fi
 
+pi_bin="$test_home/.pi/agent/bin"
+mkdir -p "$pi_bin"
+printf '#!/usr/bin/env bash\nprintf "pi-from-cli\n"\n' >"$pi_bin/pi"
+chmod +x "$pi_bin/pi"
+pi_output="$(env HOME="$test_home" PATH=/usr/bin:/bin \
+    SSH_AUTH_SOCK=/dev/null PS1= PROMPT_COMMAND=: \
+    bash --rcfile "$repo_root/dot_bashrc" -ic 'command -v pi && pi' 2>/dev/null)"
+if ! grep -Fxq "$pi_bin/pi" <<<"$pi_output" || \
+    ! grep -Fxq 'pi-from-cli' <<<"$pi_output"; then
+    printf 'Bash startup did not put the installed Pi binary on PATH.\n' >&2
+    exit 1
+fi
+
 yazi_target="$test_home/Yazi destination"
 mkdir -p "$yazi_target"
 printf '%s\n' \
