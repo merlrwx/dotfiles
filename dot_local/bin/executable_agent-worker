@@ -399,6 +399,18 @@ def command_spawn(args: argparse.Namespace) -> int:
                 encoding="utf-8",
             )
             run([agent_goal, "start", "--verify", selected_verifier], cwd=worktree)
+            with lock(state_dir / f".{args.run_id}.lock"):
+                manifest = read_manifest(manifest_file, repo=root)
+                task = manifest["tasks"][args.name]
+                task.update(
+                    {
+                        "verifier": selected_verifier,
+                        "verifier_sha256": verifier_digest,
+                        "status": "goal_activated",
+                        "goal_activated_at": now(),
+                    }
+                )
+                write_manifest(manifest_file, manifest)
 
             run(
                 ["herdr", "agent", "start", args.name, "--kind", args.kind, "--pane", pane_id],
@@ -558,6 +570,8 @@ def command_collect(args: argparse.Namespace) -> int:
         task["patch_sha256"] = hashlib.sha256(patch.encode()).hexdigest()
         task["changed_paths"] = changed
         task["collected_at"] = now()
+        task["status"] = "collected"
+        task.pop("error", None)
         write_manifest(path, manifest)
     print(json.dumps({
         "run_id": manifest["run_id"],

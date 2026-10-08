@@ -34,7 +34,7 @@ bashrc = (repo / "dot_bashrc").read_text()
 match = re.search(r"(?ms)^codex\(\) \{(.*?)^\}", bashrc)
 assert match, "Codex shell wrapper is missing"
 wrapper = match.group(1)
-assert "--yolo" not in wrapper, "codex resume must not gain permissions"
+assert '"${1:-}" == "resume"' in wrapper and "--yolo" in wrapper
 assert 'command codex --no-daemon "$@"' in wrapper
 
 with TemporaryDirectory(prefix="codex-resume-wrapper-") as directory:
@@ -59,7 +59,7 @@ with TemporaryDirectory(prefix="codex-resume-wrapper-") as directory:
     env.update({"PATH": f"{bindir}:/usr/bin:/bin", "CODEX_CALLS": str(calls)})
     subprocess.run(["bash", str(harness)], env=env, check=True, capture_output=True)
     assert calls.read_text().splitlines() == [
-        "--no-daemon resume session-123",
+        "--no-daemon resume session-123 --yolo",
         "--no-daemon resume session-456 --yolo",
         "mcp list",
         "--no-daemon",

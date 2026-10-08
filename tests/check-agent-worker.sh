@@ -143,6 +143,11 @@ elif args[:2] == ['worktree', 'create']:
     print(json.dumps({'result': {'workspace': {'workspace_id': workspace_id}, 'root_pane': {'pane_id': pane_id}}}))
 elif args[:2] == ['agent', 'start']:
     name = args[2]
+    if os.environ.get('FAKE_HERDR_BLOCK_START') == name:
+        state['agents'][name] = {'state': 'blocked', 'prompt': ''}
+        state_file.write_text(json.dumps(state))
+        print(json.dumps({'error': {'code': 'agent_not_ready', 'message': 'startup approval required'}}), file=sys.stderr)
+        raise SystemExit(1)
     state['agents'][name] = {'state': 'idle', 'prompt': ''}
     state_file.write_text(json.dumps(state))
     print(json.dumps({'ok': True}))
@@ -255,6 +260,28 @@ else:
     (second_root / "new-b.txt").write_text("new untracked B\n")
     run([str(goal_cli), "complete"], cwd=first_root)
     run([str(goal_cli), "complete"], cwd=second_root)
+
+    environment["FAKE_HERDR_BLOCK_START"] = "start-recovery"
+    interrupted_start = call_worker(
+        "spawn", "--repo", str(repo), "--run-id", "startup-recovery", "--name", "start-recovery",
+        "--goal", str(goals / "phase-03.md"), "--kind", "codex", "--base", base,
+        "--verify", str(custom_verifier), "--worktree-root", str(worktree_root), check=False,
+    )
+    environment.pop("FAKE_HERDR_BLOCK_START")
+    assert interrupted_start.returncode != 0 and "startup approval required" in interrupted_start.stderr
+    recovery_manifest = temp / "state/agent-runs/startup-recovery.json"
+    recovery_task = json.loads(recovery_manifest.read_text())["tasks"]["start-recovery"]
+    assert recovery_task["status"] == "launch_failed"
+    assert recovery_task["verifier_sha256"]
+    recovery_root = Path(recovery_task["worktree"])
+    (recovery_root / "component-c.txt").write_text("C\n")
+    run([str(goal_cli), "complete"], cwd=recovery_root)
+    recovered = json.loads(call_worker(
+        "collect", "start-recovery", "--run-id", "startup-recovery"
+    ).stdout)
+    assert recovered["goal_state"] == "verified_complete"
+    assert json.loads(recovery_manifest.read_text())["tasks"]["start-recovery"]["status"] == "collected"
+
     verifier_a = first_root / "scripts/verify-a"
     verifier_contents = verifier_a.read_text()
     verifier_a.write_text("#!/usr/bin/env bash\nexit 0\n")
@@ -288,7 +315,7 @@ else:
         "--checkout", str(repo), "--verify", "scripts/verify", check=False,
     )
     assert failed_verify.returncode != 0
-    assert json.loads(manifest_path.read_text())["tasks"]["phase-01"]["status"] == "prompt_submitted"
+    assert json.loads(manifest_path.read_text())["tasks"]["phase-01"]["status"] == "collected"
     for name in ("phase-01", "phase-02"):
         call_worker(
             "integrated", name, "--run-id", "three-phase", "--at", integration_base,
@@ -323,7 +350,7 @@ else:
     assert [manifest["tasks"][name]["status"] for name in ("phase-01", "phase-02", "phase-03")] == [
         "integrated", "integrated", "integrated"
     ]
-    assert len([item for item in git(repo, "worktree", "list", "--porcelain").splitlines() if item.startswith("worktree ")]) == 4
+    assert len([item for item in git(repo, "worktree", "list", "--porcelain").splitlines() if item.startswith("worktree ")]) == 5
 
 print("agent-worker checks passed.")
 PY

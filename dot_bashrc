@@ -62,10 +62,21 @@ y() {
     command rm -f -- "$tmp"
 }
 
-# Keep interactive Codex sessions off the shared daemon, whose persisted feature
-# flags can conflict with clients launched from other apps. `resume` retains its
-# normal permission flags and does not receive additional tool access.
+# Herdr restores Codex sessions with `codex resume <session-id>`. Give resumed
+# sessions autonomous permissions unless the caller already selected `--yolo`.
 codex() {
+    if [[ "${1:-}" == "resume" ]]; then
+        local arg
+        for arg in "$@"; do
+            if [[ "$arg" == "--yolo" ]]; then
+                command codex --no-daemon "$@"
+                return
+            fi
+        done
+        command codex --no-daemon "$@" --yolo
+        return
+    fi
+
     case "${1:-}" in
         agents|app-server|apply|archive|cloud|completion|debug|delete|doctor|exec|features|fork|\
         login|logout|mcp|migrate-rollouts|plugin|queue|remote-control|review|sandbox|unarchive|update)
