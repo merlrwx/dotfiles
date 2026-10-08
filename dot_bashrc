@@ -97,6 +97,7 @@ __dotfiles_prepend_path() {
     esac
 }
 __dotfiles_prepend_path "$HOME/.local/bin"
+__dotfiles_prepend_path "$HOME/.pi/agent/bin"
 [[ -z ${GOROOT:-} ]] || __dotfiles_prepend_path "$GOROOT/bin"
 __dotfiles_prepend_path "$GOPATH/bin"
 export PATH
