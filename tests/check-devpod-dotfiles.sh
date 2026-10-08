@@ -46,12 +46,12 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "    cat <<'INSTALLER'\n"
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "install -d -m 0755 \"$HOME/.local/bin\"\n"
-        "cat >\"$HOME/.local/bin/pi\" <<'PI'\n"
+        "install -d -m 0755 \"$HOME/.pi/agent/bin\"\n"
+        "cat >\"$HOME/.pi/agent/bin/pi\" <<'PI'\n"
         "#!/usr/bin/env bash\n"
         "printf 'pi-test\\n'\n"
         "PI\n"
-        "chmod 0755 \"$HOME/.local/bin/pi\"\n"
+        "chmod 0755 \"$HOME/.pi/agent/bin/pi\"\n"
         "INSTALLER\n"
         "    ;;\n"
         "  *) exit 9 ;;\n"
@@ -124,6 +124,24 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     assert codex_config.read_text().startswith('[tui]\ntheme = "gruvbox-material-hard"')
     assert 'trust_level = "trusted"' in codex_config.read_text()
     assert "mcp_servers" not in codex_config.read_text()
+    assert (home / ".pi/agent/bin/pi").is_file()
+
+    interactive_shell = subprocess.run(
+        [
+            "bash",
+            "--noprofile",
+            "--rcfile",
+            str(bashrc),
+            "-ic",
+            "command -v pi && pi",
+        ],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert str(home / ".pi/agent/bin/pi") in interactive_shell.stdout
+    assert "pi-test" in interactive_shell.stdout
 
     # The workspace overlay copies no host tools or credentials.
     for absent in (
