@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Re-run when either managed configuration changes.
 # herdr config: {{ include "dot_config/herdr/config.toml" | sha256sum }}
-# codex config: {{ include "dot_codex/private_config.toml.tmpl" | sha256sum }}
+# codex config defaults: {{ include "dot_codex/create_private_config.toml.tmpl" | sha256sum }}
 # codex hooks: {{ include "dot_codex/hooks.json.tmpl" | sha256sum }}
 # Pi settings: {{ include "dot_pi/agent/settings.json.tmpl" | sha256sum }}
 

@@ -5,7 +5,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 installer="$repo_root/.chezmoiscripts/run_onchange_after_install_codex_extensions.sh.tmpl"
 herdr_installer="$repo_root/.chezmoiscripts/run_onchange_after_configure_herdr_codex.sh.tmpl"
-config="$repo_root/dot_codex/private_config.toml.tmpl"
+config="$repo_root/dot_codex/create_private_config.toml.tmpl"
 shared_instructions="$repo_root/dot_config/agents/AGENTS.md"
 codex_instructions="$repo_root/dot_codex/AGENTS.md.tmpl"
 pi_instructions="$repo_root/dot_pi/agent/AGENTS.md.tmpl"
@@ -31,6 +31,7 @@ assert_contains "$shared_instructions" 'Give each autonomous agent its own Git w
 assert_contains "$shared_instructions" 'Conventional Commits'
 assert_contains "$config" '[tui]'
 assert_contains "$config" 'theme = "gruvbox-material-hard"'
+assert_contains "$config" 'model_reasoning_effort = "high"'
 assert_contains "$config" 'url = {{ .homelab_mcp_url | quote }}'
 assert_contains "$theme" '<string>Gruvbox Material Hard</string>'
 assert_contains "$herdr_installer" 'tail -c 1 "$hooks_file"'
@@ -84,5 +85,42 @@ if find "$repo_root/dot_codex" -type f \
     printf 'FAIL: runtime or authentication state is tracked under dot_codex\n' >&2
     exit 1
 fi
+
+python3 - "$repo_root" <<'PY'
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import subprocess
+import sys
+
+repo_root = Path(sys.argv[1])
+with TemporaryDirectory(prefix="codex-seed-config-") as temp_dir:
+    root = Path(temp_dir)
+    source = root / "source"
+    home = root / "home"
+    source_config = source / "dot_codex" / "create_private_config.toml"
+    target_config = home / ".codex" / "config.toml"
+    source_config.parent.mkdir(parents=True)
+    (home / ".codex").mkdir(parents=True)
+    source_config.write_text('model = "gpt-6-luna"\nmodel_reasoning_effort = "high"\n')
+    state = root / "state"
+
+    def chezmoi(*args):
+        return subprocess.run(
+            ["chezmoi", "--source", str(source), "--destination", str(home),
+             "--persistent-state", str(state), *args],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+    chezmoi("apply")
+    target_config.write_text(
+        target_config.read_text()
+        + '\n[projects."/workspace/project"]\ntrust_level = "trusted"\n'
+    )
+    assert chezmoi("status").stdout.strip() == ""
+    chezmoi("apply", "--dry-run")
+    assert 'trust_level = "trusted"' in target_config.read_text()
+PY
 
 printf 'Codex portability checks passed.\n'
