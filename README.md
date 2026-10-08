@@ -224,12 +224,16 @@ and selects `IoskeleyMonoTerm Nerd Font Mono` for supported desktop
 applications; remote terminal font rendering comes from the local terminal
 client.
 
-Bash uses ble.sh for syntax highlighting, suggestions, and menu completion;
-Starship owns the prompt and uses portable ASCII `>` and `git:<branch>` markers.
+Bash uses ble.sh for interactive editing and completion, including syntax
+highlighting, suggestions, and the navigable menu; Starship owns the prompt and
+uses portable ASCII `>` and `git:<branch>` markers. Register native Bash
+providers in `~/.config/bash/completions/init.sh` with
+`command <tool> completion bash`; add wrappers there when runtime candidates are
+missing.
 At an idle prompt, Ctrl+C cancels the current line in both vi editing modes. The
 `k` alias retains kubectl completion, Fabric pattern aliases are generated from
-installed pattern names, and `yt` requests a video transcript. Neofetch
-displays the colored cat once at interactive startup (once per tmux session).
+installed pattern names, and `yt` requests a video transcript. Neofetch shows a
+colored cat once at interactive terminal startup (once per tmux session).
 Tmux uses the matching status colors and enables terminal clipboard forwarding
 where the client supports it; detach with the usual `Ctrl-b`, then `d`.
 
