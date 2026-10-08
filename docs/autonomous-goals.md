@@ -4,6 +4,13 @@
 Codex is the default implementation harness. Pi supports plan work and recovery
 against the same goal state; it does not spawn another agent.
 
+Run either harness casually on the host in its own Herdr session, or use the
+manual V2 worker flow: Herdr stays on the host and connects to a unique DevPod
+workspace, where one agent works in its own Git worktree. DevPod forwards
+supported Git/SSH/Docker credentials; model sign-in remains separate per
+workspace. Homelab MCP is optional. The
+[README workflow guide](../README.md#workflow-modes) shows both paths.
+
 ## Workflow
 
 For a clear implementation task, start in Codex with:
@@ -21,11 +28,10 @@ revised plan and start a fresh implementation session with
 The plan is the handoff. Do not carry the brainstorming transcript into the
 implementation session.
 
-The normal V0 workflow uses Pi for plan grilling and recovery, then starts a
-fresh Codex session for implementation. Each autonomous agent owns one Git
-worktree. For parallel work, start sessions manually in separate worktrees;
-never run two agents in the same checkout. V0 has no automatic worker spawning
-or scheduler.
+For planning, Pi can grill a draft before activation; Codex remains the default
+implementation harness. Each autonomous agent owns one Git worktree. For
+parallel work, start sessions manually in separate worktrees; never run two
+agents in the same checkout. V2 has no automatic worker spawning or scheduler.
 
 ## Goal contract
 
@@ -80,9 +86,11 @@ The Codex Stop hook continues an active implementation goal only while
 `.agent/ACTIVE` is valid and no `COMPLETE`, `PAUSE`, or `BLOCKED.md` marker
 exists. Pi's `agent_before_settle` extension is a recovery compatibility path:
 it continues the goal only when Pi is deliberately opened in that active
-worktree. Do plan grilling before activation or in a separate worktree. Pi also
-checks that the verifier remains inside the repository and matches the
-activated digest.
+worktree. This extension is part of the host Pi configuration; the lightweight
+DevPod dotfiles install shared instructions and the Pi CLI but omits that
+extension and host MCP settings. Do plan grilling before activation or in a
+separate worktree. Pi also checks that the verifier remains inside the
+repository and matches the activated digest.
 
 ## Git and authority
 
