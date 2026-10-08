@@ -9,3 +9,8 @@
 
 [pull]
 	ff = only
+
+# DevPod may SSH as root while a mounted workspace belongs to the image user.
+# Trust only repositories in the disposable workspace mount.
+[safe]
+	directory = /workspaces/*

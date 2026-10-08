@@ -81,6 +81,14 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         check=True,
     ).stdout.splitlines()
     assert include_paths == [str(home / ".config/merlrwx/gitconfig")]
+    safe_directories = subprocess.run(
+        ["git", "config", "--get-all", "safe.directory"],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.splitlines()
+    assert safe_directories == ["/workspaces/*"]
     assert subprocess.run(
         ["git", "config", "--global", "credential.helper"],
         env=env,

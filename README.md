@@ -90,6 +90,8 @@ Create a fresh workspace for each task from the same repository:
 
 ```bash
 repo=https://github.com/<owner>/<repo>
+project=${repo##*/}
+project=${project%.git}
 task=api-timeouts
 
 devpod up "$repo" \
@@ -104,10 +106,11 @@ Start a named Herdr session on the host and connect it to that worker:
 ```bash
 herdr --session "codex-$task"
 # In the Herdr pane:
-devpod ssh "$task"
+devpod ssh "$task" --workdir "/workspaces/$project"
 ```
 
-Inside the workspace shell, create the task worktree and start Codex there:
+Inside the project directory in the workspace shell, create the task worktree
+and start Codex there:
 
 ```bash
 task=api-timeouts

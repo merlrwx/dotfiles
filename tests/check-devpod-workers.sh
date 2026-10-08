@@ -8,6 +8,8 @@ readme="$repo_root/README.md"
 for expected in \
     '### Isolated Codex workers (V2)' \
     'devpod up "$repo"' \
+    'project=${repo##*/}' \
+    'devpod ssh "$task" --workdir "/workspaces/$project"' \
     '--id "$task"' \
     'devpod ssh "$task"' \
     'git worktree add ".agent-worktrees/$task"' \
