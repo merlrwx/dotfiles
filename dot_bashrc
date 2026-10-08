@@ -69,15 +69,25 @@ codex() {
         local arg
         for arg in "$@"; do
             if [[ "$arg" == "--yolo" ]]; then
-                command codex "$@"
+                command codex --no-daemon "$@"
                 return
             fi
         done
-        command codex "$@" --yolo
+        command codex --no-daemon "$@" --yolo
         return
     fi
 
-    command codex "$@"
+    case "${1:-}" in
+        agents|app-server|apply|archive|cloud|completion|debug|delete|doctor|exec|features|fork|\
+        login|logout|mcp|migrate-rollouts|plugin|queue|remote-control|review|sandbox|unarchive|update)
+            command codex "$@"
+            ;;
+        *)
+            # Keep interactive sessions off the shared daemon, whose persisted
+            # feature flags can conflict with clients launched from other apps.
+            command codex --no-daemon "$@"
+            ;;
+    esac
 }
 
 # Keep the terminal launcher in sync before opening Herdr. The same launcher is

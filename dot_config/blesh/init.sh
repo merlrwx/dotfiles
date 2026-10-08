@@ -7,6 +7,10 @@ bleopt complete_auto_delay=250
 # Keep Vim editing without the extra mode banner below the prompt.
 blehook/eval-after-load keymap_vi 'bleopt keymap_vi_mode_show='
 
+# Ctrl+C cancels the current command line in both vi insert and command modes.
+ble-bind -m vi_imap -f 'C-c' discard-line
+ble-bind -m vi_nmap -f 'C-c' discard-line
+
 # Gruvbox Material Dark Hard accents, coordinated with the Alacritty palette.
 ble-face -s syntax_default fg=#d4be98
 ble-face -s syntax_command fg=#a9b665
@@ -43,4 +47,5 @@ ble-face -s menu_filter_input fg=#d4be98,bg=#282828
 # Starship already presents command duration and failure status.
 bleopt exec_elapsed_mark=
 bleopt exec_errexit_mark=
+bleopt exec_exit_mark=
 bleopt prompt_eol_mark=''

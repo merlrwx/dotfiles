@@ -79,6 +79,11 @@ herdr --session codex
 codex
 ```
 
+The Bash wrapper starts interactive Codex sessions without the shared
+background daemon. This avoids feature-setting conflicts between CLI sessions
+and other Codex clients; management commands such as `codex mcp` keep their
+normal behavior.
+
 Pi can use its own session too:
 
 ```bash
@@ -220,12 +225,13 @@ applications; remote terminal font rendering comes from the local terminal
 client.
 
 Bash uses ble.sh for syntax highlighting, suggestions, and menu completion;
-Starship owns the prompt. The `k` alias retains kubectl completion, Fabric
-pattern aliases are generated from installed pattern names, and `yt` requests
-a video transcript. Neofetch displays the colored cat once at interactive
-startup (once per tmux session). Tmux uses the matching status colors and
-enables terminal clipboard forwarding where the client supports it; detach
-with the usual `Ctrl-b`, then `d`.
+Starship owns the prompt and uses portable ASCII `>` and `git:<branch>` markers.
+At an idle prompt, Ctrl+C cancels the current line in both vi editing modes. The
+`k` alias retains kubectl completion, Fabric pattern aliases are generated from
+installed pattern names, and `yt` requests a video transcript. Neofetch
+displays the colored cat once at interactive startup (once per tmux session).
+Tmux uses the matching status colors and enables terminal clipboard forwarding
+where the client supports it; detach with the usual `Ctrl-b`, then `d`.
 
 ## Plan a complex change
 

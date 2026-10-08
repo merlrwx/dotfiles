@@ -34,12 +34,12 @@ os = "linux"
 style = "#d4be98"
 
 [character]
-success_symbol = "[❯](#a9b665)"
-error_symbol = "[❯](#ea6962)"
-vimcmd_symbol = "[❮](#d3869b)"
+success_symbol = "[>](#a9b665)"
+error_symbol = "[>](#ea6962)"
+vimcmd_symbol = "[<](#d3869b)"
 
 [git_branch]
-format = "[ $branch]($style)"
+format = "[git:$branch]($style)"
 style = "#7daea3"
 
 [git_status]
