@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 installer="$repo_root/.chezmoiscripts/run_onchange_after_install_codex_extensions.sh.tmpl"
 herdr_installer="$repo_root/.chezmoiscripts/run_onchange_after_configure_herdr_codex.sh.tmpl"
+herdr_skill_installer="$repo_root/.chezmoiscripts/run_after_install_herdr_skill.sh"
 config="$repo_root/dot_codex/create_private_config.toml.tmpl"
 shared_instructions="$repo_root/dot_config/agents/AGENTS.md"
 codex_instructions="$repo_root/dot_codex/AGENTS.md.tmpl"
@@ -12,6 +13,8 @@ pi_instructions="$repo_root/dot_pi/agent/AGENTS.md.tmpl"
 pi_settings="$repo_root/dot_pi/agent/settings.json.tmpl"
 pi_mcp="$repo_root/dot_pi/agent/mcp.json.tmpl"
 launcher="$repo_root/dot_local/bin/executable_herdr-launch"
+worker="$repo_root/dot_local/bin/executable_agent-worker"
+parallel_skill="$repo_root/dot_codex/skills/parallel-work/SKILL.md"
 theme="$repo_root/dot_codex/themes/gruvbox-material-hard.tmTheme"
 
 assert_contains() {
@@ -27,7 +30,9 @@ assert_contains() {
 assert_contains "$codex_instructions" 'include "dot_config/agents/AGENTS.md"'
 assert_contains "$pi_instructions" 'include "dot_config/agents/AGENTS.md"'
 assert_contains "$shared_instructions" 'Make the smallest correct change.'
-assert_contains "$shared_instructions" 'Give each autonomous agent its own Git worktree;'
+assert_contains "$shared_instructions" 'exactly one root implementation agent'
+assert_contains "$shared_instructions" 'Delegate only when the user explicitly asks.'
+assert_contains "$shared_instructions" 'stage only task-owned paths'
 assert_contains "$shared_instructions" 'Conventional Commits'
 assert_contains "$config" '[tui]'
 assert_contains "$config" 'theme = "gruvbox-material-hard"'
@@ -36,6 +41,12 @@ assert_contains "$config" 'url = {{ .homelab_mcp_url | quote }}'
 assert_contains "$theme" '<string>Gruvbox Material Hard</string>'
 assert_contains "$herdr_installer" 'tail -c 1 "$hooks_file"'
 assert_contains "$herdr_installer" 'herdr integration install pi'
+assert_contains "$herdr_skill_installer" 'herdr --skill'
+assert_contains "$herdr_skill_installer" '.codex/skills/herdr/SKILL.md'
+assert_contains "$herdr_skill_installer" '.pi/agent/skills/herdr/SKILL.md'
+assert_contains "$worker" '"worktree", "create"'
+assert_contains "$parallel_skill" '### Isolated autonomous'
+assert_contains "$parallel_skill" '## Deliberation'
 assert_contains "$installer" 'engineering-suite-grill-me@openai-curated-remote'
 assert_contains "$installer" 'codex plugin remove'
 assert_contains "$installer" 'engineering-suite-ponytail@openai-curated-remote'
@@ -73,7 +84,7 @@ rendered_settings="$(chezmoi --source "$repo_root" execute-template <"$pi_settin
 rendered_mcp="$(chezmoi --source "$repo_root" \
     --override-data '{"homelab_mcp_url":"https://mcp-server.home.arpa/mcp/"}' \
     execute-template <"$pi_mcp")"
-jq -e '.defaultProvider == "openai" and .theme == "system" and (.skills | length == 2)' \
+jq -e '.defaultProvider == "openai" and .theme == "system" and (.skills | length == 3)' \
     <<<"$rendered_settings" >/dev/null
 jq -e '.mcpServers["homelab-mcp"].url == "https://mcp-server.home.arpa/mcp/" and .mcpServers["homelab-mcp"].exposure == "codemode"' \
     <<<"$rendered_mcp" >/dev/null

@@ -40,9 +40,11 @@ flowchart LR
     credentials["Host credentials<br/>Git · SSH agent · Docker registry"]
     devpod["DevPod CLI"]
     checkout["Interactive host checkout"]
-    hostagent["Codex or Pi<br/>host sign-in"]
+    coordinator["Coordinator Codex or Pi<br/>host sign-in"]
+    workers["Herdr Git worktrees<br/>up to three workers"]
+    workeragents["Codex or Pi workers<br/>host sign-in"]
     connect["Herdr pane:<br/>devpod ssh task"]
-    herdr --> checkout --> hostagent
+    herdr --> checkout --> coordinator --> workers --> workeragents
     herdr --> connect
     devpod --> connect
   end
@@ -55,21 +57,44 @@ flowchart LR
   end
 
   connect --> project
-  credentials -.-> hostagent
+  credentials -.-> coordinator
+  credentials -.-> workeragents
   credentials -. "DevPod forwarding where supported" .-> project
-  mcp["Optional homelab MCP\nfor homelab/API work"] -.-> hostagent
+  mcp["Optional homelab MCP\nfor homelab/API work"] -.-> coordinator
 ```
 
 **Interactive mode:** run an agent on the host in Herdr. Use the host checkout
 and its normal credentials; start DevPod only when the project's tools require
 its DevContainer.
 
-**Isolated worker mode (V2):** start one DevPod workspace with a unique ID per
-task, create one Git worktree in that workspace, then run Codex or Pi there.
-Start additional workers manually with their own workspace IDs and worktrees;
-there is no scheduler. Choose one agent per worktree. Homelab MCP is available
-only when separately configured and reachable; it is not needed for portable
-Git or project work.
+**Herdr parallel mode:** when you explicitly ask a coordinator to delegate, the
+`parallel-work` skill can launch up to three named workers in separate Git
+worktrees. `agent-worker` prepares one autonomous goal per worktree, starts
+Codex or Pi through Herdr, and records run metadata under
+`~/.local/state/agent-runs/`. The coordinator reviews each verifier result,
+collects its patch, integrates it, and then starts dependent phases. Workers do
+not delegate recursively. See [parallel work](docs/parallel-work.md) for the
+three modes, boundaries, and recovery steps. Coordination stays with the active
+agent; there is no background scheduler.
+
+From a coordinator already running in Herdr, a request can look like this:
+
+```text
+$autonomous-goal Implement PLAN.md. Use parallel-work isolated mode for the
+independent phases, start with two workers, and keep all changes local. You may
+make local integration commits to unblock dependent phases; do not push or deploy.
+```
+
+The commit sentence is needed only when dependent work must start from a
+verified integration commit. Without that authority, the coordinator keeps
+dependent phases pending. Herdr worktree and agent CLI details are handled by
+the installed Herdr skill.
+
+**Isolated workers in DevPod (optional):** create a DevPod workspace with a
+unique ID per task, then a dedicated Git worktree inside it. This remains useful
+when a project needs DevContainer tools or workspace-level isolation. Homelab
+MCP is available only when separately configured and reachable; it is not
+needed for portable Git or project work.
 
 For the regular host flow, open a Herdr session and start Codex in its pane:
 

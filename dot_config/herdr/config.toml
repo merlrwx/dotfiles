@@ -1,10 +1,10 @@
 onboarding = false
 
 [ui.toast]
-delivery = "system"
+delivery = "herdr"
 
 [ui.sound]
-enabled = true
+enabled = false
 
 [theme]
 name = "gruvbox"
@@ -13,6 +13,12 @@ auto_switch = false
 [ui]
 show_agent_labels_on_pane_borders = true
 agent_panel_sort = "priority"
+
+[worktrees]
+directory = "~/.herdr/worktrees"
+
+[session]
+resume_agents_on_restore = true
 
 # Keep Herdr's prefix distinct from the outer tmux Ctrl-b prefix. This lets
 # Herdr shortcuts pass through a local tmux session while SSH'd into this host.

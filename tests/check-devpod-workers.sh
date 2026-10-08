@@ -14,9 +14,11 @@ for expected in \
     'devpod ssh "$task"' \
     'git worktree add ".agent-worktrees/$task"' \
     'codex login --device-auth' \
+    'parallel-work' \
+    'agent-worker' \
     'homelab MCP' \
     ':/workspaces/${localWorkspaceFolderBasename}:Z' \
-    'no scheduler'; do
+    'no background scheduler'; do
     if ! grep -Fqi -- "$expected" "$readme"; then
         printf 'V2 worker documentation is missing: %s\n' "$expected" >&2
         exit 1

@@ -20,6 +20,7 @@ shared_paths=(
     .vimrc
     .config/mise/config.toml
     .local/bin/neofetch
+    .local/bin/agent-worker
     .local/share/blesh/ble.sh
     .config/blesh/init.sh
     .config/neofetch/cat
