@@ -5,9 +5,12 @@
 format = """
 ($username$hostname${custom.remote_host} )\
 $directory\
-$git_branch\
-$git_state\
-$git_status\
+${custom.branch_unstaged}\
+${custom.branch_staged}\
+${custom.branch_unborn}\
+${custom.branch_behind}\
+${custom.branch_ahead}\
+${custom.branch_synced}\
 $cmd_duration\
 $line_break\
 $python\
@@ -38,28 +41,47 @@ success_symbol = "[>](#a9b665)"
 error_symbol = "[>](#ea6962)"
 vimcmd_symbol = "[<](#d3869b)"
 
-[git_branch]
-format = '[\($branch\)]($style) '
-style = "bold #7daea3"
+# Branch color: amber = changes to add, olive = staged, aqua = push, red = pull, grey = synced.
+[custom.branch_unstaged]
+command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
+when = '''! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"'''
+require_repo = true
+format = '[$output]($style) '
+style = "#b08b4e"
 
-[git_status]
-format = "$conflicted$untracked$modified$staged$renamed$deleted$typechanged$ahead_behind$stashed"
-conflicted = "[CONFLICT ${count}](bold #ea6962) "
-untracked = "[? ${count} untracked](bold #d8a657) "
-modified = "[! ${count} modified](bold #e78a4e) "
-staged = "[+ ${count} staged](bold #a9b665) "
-renamed = "[> ${count} renamed](#7daea3) "
-deleted = "[- ${count} deleted](bold #ea6962) "
-typechanged = "[~ ${count} type-changed](#d3869b) "
-ahead = "[^ ${count} ahead](bold #a9b665) "
-behind = "[v ${count} behind](bold #e78a4e) "
-diverged = "[<> ${ahead_count} ahead/${behind_count} behind](bold #ea6962) "
-up_to_date = "[up to date](bold #a9b665) "
-stashed = "[= ${count} stashed](#928374) "
-style = "#d4be98"
+[custom.branch_staged]
+command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
+when = '''git diff --quiet && test -z "$(git ls-files --others --exclude-standard)" && ! git diff --cached --quiet'''
+require_repo = true
+format = '[$output]($style) '
+style = "#87945d"
 
-[git_state]
-format = '\([$state( $progress_current/$progress_total)]($style)\) '
+[custom.branch_behind]
+command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
+when = '''test -z "$(git status --porcelain)" && git rev-parse --verify '@{u}' >/dev/null 2>&1 && test "$(git rev-list --count 'HEAD..@{u}')" -gt 0'''
+require_repo = true
+format = '[$output]($style) '
+style = "#b36a65"
+
+[custom.branch_unborn]
+command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
+when = '''test -z "$(git status --porcelain)" && ! git rev-parse --verify HEAD >/dev/null 2>&1'''
+require_repo = true
+format = '[$output]($style) '
+style = "#928374"
+
+[custom.branch_ahead]
+command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
+when = '''test -z "$(git status --porcelain)" && git rev-parse --verify HEAD >/dev/null 2>&1 && { ! git rev-parse --verify '@{u}' >/dev/null 2>&1 || { test "$(git rev-list --count 'HEAD..@{u}')" -eq 0 && test "$(git rev-list --count '@{u}..HEAD')" -gt 0; }; }'''
+require_repo = true
+format = '[$output]($style) '
+style = "#688b82"
+
+[custom.branch_synced]
+command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
+when = '''test -z "$(git status --porcelain)" && git rev-parse --verify '@{u}' >/dev/null 2>&1 && test "$(git rev-list --count 'HEAD..@{u}')" -eq 0 && test "$(git rev-list --count '@{u}..HEAD')" -eq 0'''
+require_repo = true
+format = '[$output]($style) '
 style = "#928374"
 
 [cmd_duration]
