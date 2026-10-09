@@ -76,8 +76,9 @@ Codex or Pi through Herdr, and records run metadata under
 `~/.local/state/agent-runs/`. The coordinator reviews each verifier result,
 collects its patch, integrates it, and then starts dependent phases. Workers do
 not delegate recursively. See [parallel work](docs/parallel-work.md) for the
-three modes, boundaries, and recovery steps. Coordination stays with the active
-agent; there is no background scheduler.
+three modes, boundaries, and recovery steps, and [Git branches and worktrees](docs/git-branch-lifecycle.md)
+for branch integration and cleanup. Coordination stays with the active agent;
+there is no background scheduler.
 
 From a coordinator already running in Herdr, a request can look like this:
 
