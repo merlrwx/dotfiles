@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+python3 - "$repo_root" <<'PY'
+from pathlib import Path
+import tomllib
+import sys
+
+root = Path(sys.argv[1])
+mise_dir = root / "dot_config/mise"
+config = tomllib.loads((mise_dir / "config.toml").read_text())
+lock = tomllib.loads((mise_dir / "mise.lock").read_text())
+
+assert config["min_version"] == "2026.10.5"
+assert config["settings"]["pin"] is True
+assert config["settings"]["lockfile"] is True
+assert config["settings"]["minimum_release_age"] == "7d"
+assert set(config["settings"]["lockfile_platforms"]) == {"linux-x64", "linux-arm64"}
+assert lock["lockfile_version"] == 3
+assert set(lock["tools"]) == set(config["tools"])
+for name, requested in config["tools"].items():
+    assert isinstance(requested, str) and requested != "latest", name
+    entries = lock["tools"][name]
+    assert len(entries) == 1, name
+    entry = entries[0]
+    assert entry["version"] == requested, name
+    assert entry["specifiers"] == [requested], name
+    for platform in ("linux-x64", "linux-arm64"):
+        platform_entry = entry[f"platforms.{platform}"]
+        assert platform_entry["url"].startswith("https://"), (name, platform)
+
+external = tomllib.loads((root / ".chezmoiexternals/neovim.toml").read_text())
+starter = external[".config/nvim"]
+assert starter["type"] == "archive"
+assert starter["url"] == "https://github.com/LazyVim/starter/archive/refs/heads/main.tar.gz"
+assert starter["stripComponents"] == 1
+assert starter["refreshPeriod"] == "168h"
+assert set(starter["exclude"]) == {"**/init.lua", "**/options.lua"}
+
+nvim = root / "dot_config/nvim"
+assert (nvim / "init.lua").is_file()
+assert (nvim / "lua/config/options.lua").is_file()
+assert not (nvim / "lua/config/lazy.lua").exists()
+assert "require(\"config.clipboard\")" in (nvim / "init.lua").read_text()
+assert "require(\"config.lazy\")" in (nvim / "init.lua").read_text()
+
+extras = (nvim / "lua/plugins/extras.lua").read_text()
+for plugin in (
+    "lazyvim.plugins.extras.editor.fzf",
+    "lazyvim.plugins.extras.coding.mini-surround",
+    "lazyvim.plugins.extras.ui.mini-indentscope",
+    "lazyvim.plugins.extras.lang.json",
+    "lazyvim.plugins.extras.lang.markdown",
+    "lazyvim.plugins.extras.lang.toml",
+    "lazyvim.plugins.extras.lang.yaml",
+):
+    assert plugin in extras
+assert "vim.g.lazyvim_picker = \"fzf\"" in (nvim / "lua/config/options.lua").read_text()
+assert '"nvim-mini/mini.pairs", enabled = false' in (nvim / "lua/plugins/disabled.lua").read_text()
+good_to_have = (nvim / "lua/plugins/good_to_have.lua").read_text()
+assert "shortcuts/no-neck-pain.nvim" in good_to_have
+assert "sotte/presenting.nvim" in good_to_have
+assert not any("zettel" in path.name.lower() for path in (nvim / "lua").rglob("*"))
+
+aliases = (root / "dot_config/bash/aliases").read_text()
+assert "alias cat='bat --paging=never'" in aliases
+assert "alias ls='lsd'" in aliases
+assert "alias lt='ls --tree'" in aliases
+assert "command ls --color=auto" in aliases
+
+host_bash = (root / "dot_bashrc").read_text()
+devpod_bash = (root / "assets/devpod/bashrc").read_text()
+completion_init = (root / "dot_config/bash/completions/init").read_text()
+for content in (host_bash, devpod_bash):
+    assert "mise activate bash" in content
+    assert content.index("mise activate bash") < content.index("completions/init")
+assert "flux completion bash" in completion_init
+assert "mise completion bash" in completion_init
+
+installer = (root / "install").read_text()
+assert "dot_config/mise/config.toml" in installer
+assert "dot_config/mise/mise.lock" in installer
+assert 'install --locked --cd "$HOME"' in installer
+assert "chezmoi --source \"$dotfiles_root\"" in installer
+assert 'apply --force --include=files "$HOME/.config/nvim"' in installer
+
+readme = (root / "README.md").read_text()
+guide = (root / "docs/neovim.md").read_text()
+assert "same pinned global Mise tools" in readme
+for topic in ("Space f f", "Space s g", ":FzfLua live_grep", ".lazy.lua", ":NoNeckPain", ":Presenting", "mise upgrade --bump"):
+    assert topic in guide, topic
+PY
+
+printf 'Dotfiles refactor configuration checks passed.\n'

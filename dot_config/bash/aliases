@@ -1,0 +1,18 @@
+# ~~~~~~~~~~~~~~~ Modern command aliases ~~~~~~~~~~~~~~~~~~~~~~~~
+
+if command -v bat >/dev/null 2>&1; then
+    alias cat='bat --paging=never'
+fi
+
+if command -v lsd >/dev/null 2>&1; then
+    alias ls='lsd'
+    alias ll='ls -l'
+    alias la='ls -la'
+    alias lla='ls -lha'
+    alias lt='ls --tree'
+else
+    alias ls='command ls --color=auto'
+    alias ll='command ls --color=auto -la'
+    alias la='command ls --color=auto -lAh'
+    alias lla='command ls --color=auto -lha'
+fi

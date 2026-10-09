@@ -40,10 +40,6 @@ alias ..='cd ..'
 alias repos='cd "$REPOS"'
 alias dot='cd "$DOTFILES"'
 
-alias ls='ls --color=auto'
-alias ll='ls -la'
-alias la='ls -lAh'
-
 alias t='tmux'
 alias gs='git status'
 alias gp='git pull'
@@ -113,6 +109,16 @@ __dotfiles_prepend_path "$GOPATH/bin"
 export PATH
 unset -f __dotfiles_prepend_path
 
+# Activate Mise before loading aliases and generated completions.
+if command -v mise >/dev/null 2>&1; then
+    eval "$(mise activate bash)"
+fi
+
+# Shared guarded aliases are available on the host and in DevPod.
+if [[ -r "$HOME/.config/bash/aliases" ]]; then
+    source -- "$HOME/.config/bash/aliases"
+fi
+
 # Fabric pattern aliases
 for pattern_file in "$HOME"/.config/fabric/patterns/*; do
     [[ -f "$pattern_file" ]] || continue
@@ -149,8 +155,8 @@ if [ -f /usr/share/bash-completion/bash_completion ]; then
     source /usr/share/bash-completion/bash_completion
 fi
 
-if [[ -r "$HOME/.config/bash/completions/init.sh" ]]; then
-    source -- "$HOME/.config/bash/completions/init.sh"
+if [[ -r "$HOME/.config/bash/completions/init" ]]; then
+    source -- "$HOME/.config/bash/completions/init"
 fi
 
 # SSH agent
@@ -165,11 +171,6 @@ fi
 # Auto-start tmux in Alacritty (only if not already in tmux)
 if [[ -z "$TMUX" ]] && [[ "$TERM" == "alacritty" ]]; then
     exec tmux new-session -s main
-fi
-
-# mise
-if command -v mise >/dev/null 2>&1; then
-  eval "$(mise activate bash)"
 fi
 
 # starship

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-skill_installer="$repo_root/.chezmoiscripts/run_after_install_herdr_skill.sh"
+skill_installer="$repo_root/.chezmoiscripts/run_after_install_herdr_skill"
 
 bash -n "$skill_installer"
 python3 - "$repo_root" <<'PY'
@@ -47,7 +47,7 @@ with TemporaryDirectory(prefix="codex-resume-wrapper-") as directory:
     )
     fake_codex.chmod(0o755)
     calls = root / "calls.log"
-    harness = root / "wrapper.sh"
+    harness = root / "wrapper"
     harness.write_text(
         f"codex() {{{wrapper}\n}}\n"
         "codex resume session-123\n"
@@ -82,7 +82,7 @@ for expected in (
 settings = json.loads((repo / "dot_pi/agent/settings.json.tmpl").read_text())
 assert "~/.pi/agent/skills/herdr" in settings["skills"]
 assert (repo / "dot_codex/skills/parallel-work/SKILL.md").is_file()
-herdr_skill_installer = repo / ".chezmoiscripts/run_after_install_herdr_skill.sh"
+herdr_skill_installer = repo / ".chezmoiscripts/run_after_install_herdr_skill"
 installer_text = herdr_skill_installer.read_text()
 assert "herdr --skill" in installer_text
 assert ".codex/skills/herdr/SKILL.md" in installer_text
@@ -120,7 +120,7 @@ with TemporaryDirectory(prefix="herdr-skill-install-") as directory:
         "PATH": f"{bindir}:/usr/bin:/bin",
         "HERDR_SKILL_SOURCE": str(skill_source),
     })
-    installer = repo / ".chezmoiscripts/run_after_install_herdr_skill.sh"
+    installer = repo / ".chezmoiscripts/run_after_install_herdr_skill"
     subprocess.run(["bash", str(installer)], env=env, check=True, capture_output=True)
     codex_skill = home / ".codex/skills/herdr/SKILL.md"
     pi_skill = home / ".pi/agent/skills/herdr/SKILL.md"
@@ -133,23 +133,17 @@ with TemporaryDirectory(prefix="herdr-skill-install-") as directory:
     assert pi_skill.read_text() == skill_source.read_text()
 
 if shutil.which("herdr"):
-    status = subprocess.run(["herdr", "integration", "status"], text=True, capture_output=True, check=True)
-    assert "codex: current" in status.stdout
-    assert "pi: current" in status.stdout
-    effective = Path.home() / ".codex/hooks.json"
-    if effective.is_file():
-        hooks = json.loads(effective.read_text())
-        assert "SessionStart" in hooks.get("hooks", {})
-        assert "Stop" in hooks.get("hooks", {})
-        hook_path = Path.home() / ".codex/herdr-agent-state.sh"
-        assert hook_path.is_file()
-
+    # Exercise integration install in a temporary home instead of relying on
+    # the caller's already-applied dotfiles, which may use an older hook path.
     with TemporaryDirectory(prefix="herdr-codex-hook-merge-") as directory:
         root = Path(directory)
         home = root / "home"
         xdg = root / "xdg"
         home.mkdir()
         xdg.mkdir()
+        herdr_config = xdg / "herdr/config.toml"
+        herdr_config.parent.mkdir(parents=True)
+        herdr_config.write_text((repo / "dot_config/herdr/config.toml").read_text())
         template = (repo / "dot_codex/hooks.json.tmpl").read_text()
         rendered = subprocess.run(
             ["chezmoi", "--source", str(repo), "--override-data",
@@ -159,6 +153,12 @@ if shutil.which("herdr"):
         hooks_path = home / ".codex/hooks.json"
         hooks_path.parent.mkdir(parents=True)
         hooks = json.loads(rendered)
+        template_stop_commands = [
+            hook.get("command", "")
+            for group in hooks["hooks"]["Stop"]
+            for hook in group.get("hooks", [])
+        ]
+        assert any("agent-goal" in command and "hook-stop" in command for command in template_stop_commands)
         hooks["hooks"]["Notification"] = [{"hooks": [{"type": "command", "command": "custom-notification"}]}]
         hooks["userExtension"] = "preserve-me"
         hooks_path.write_text(json.dumps(hooks) + "\n")
@@ -187,7 +187,7 @@ if shutil.which("herdr"):
             for group in merged["hooks"]["SessionStart"]
             for hook in group.get("hooks", [])
         ]
-        assert sum("herdr-agent-state.sh" in command for command in session_commands) == 1
+        assert sum("herdr-agent-state" in command for command in session_commands) == 1
         assert (home / ".codex/herdr-agent-state.sh").is_file()
 
 print("Herdr workflow checks passed.")

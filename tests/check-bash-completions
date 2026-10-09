@@ -87,9 +87,35 @@ fi
 HERDR
 chmod +x "$temporary_dir/bin/herdr"
 
+cat >"$temporary_dir/bin/flux" <<'FLUX'
+#!/usr/bin/env bash
+if [[ ${1-} == completion && ${2-} == bash ]]; then
+    cat <<'COMPLETION'
+__start_flux() { COMPREPLY=(get reconcile suspend); }
+complete -F __start_flux flux
+COMPLETION
+else
+    exit 2
+fi
+FLUX
+chmod +x "$temporary_dir/bin/flux"
+
+cat >"$temporary_dir/bin/mise" <<'MISE'
+#!/usr/bin/env bash
+if [[ ${1-} == completion && ${2-} == bash ]]; then
+    cat <<'COMPLETION'
+__start_mise() { COMPREPLY=(activate install trust); }
+complete -F __start_mise mise
+COMPLETION
+else
+    exit 2
+fi
+MISE
+chmod +x "$temporary_dir/bin/mise"
+
 PATH="$temporary_dir/bin:$PATH" \
 HOME="$temporary_dir/home" \
-COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init.sh" \
+COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" \
 bash --noprofile --norc -euo pipefail <<'BASH'
 fail() {
     printf 'Bash completion check failed: %s\n' "$1" >&2
@@ -109,6 +135,8 @@ source "$COMPLETION_SOURCE"
 
 complete -p kubectl >/dev/null 2>&1 || fail 'kubectl completion was not registered'
 complete -p k >/dev/null 2>&1 || fail 'k alias completion was not registered'
+complete -p flux >/dev/null 2>&1 || fail 'Flux completion was not registered'
+complete -p mise >/dev/null 2>&1 || fail 'Mise completion was not registered'
 
 completion_function() {
     local registration
@@ -168,17 +196,17 @@ herdr_failed="$(complete_line herdr herdr --session '')" || fail 'Herdr listing 
 [[ -z $herdr_failed ]] || fail 'Herdr listing failure returned invalid candidates'
 BASH
 
-startup_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/startup-home" XDG_CACHE_HOME="$temporary_dir/startup-cache" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init.sh" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"' 2>&1)"
+startup_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/startup-home" XDG_CACHE_HOME="$temporary_dir/startup-cache" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"' 2>&1)"
 [[ -z $startup_output ]] || { printf 'Bash completion check failed: completion setup printed during startup\n' >&2; exit 1; }
 
 mkdir -p "$temporary_dir/fallback-home"
 touch "$temporary_dir/cache-is-a-file"
-fallback_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/fallback-home" XDG_CACHE_HOME="$temporary_dir/cache-is-a-file" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init.sh" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"; complete -p devpod >/dev/null' 2>&1)"
+fallback_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/fallback-home" XDG_CACHE_HOME="$temporary_dir/cache-is-a-file" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"; complete -p devpod >/dev/null' 2>&1)"
 [[ -z $fallback_output ]] || { printf 'Bash completion check failed: an unavailable cache path printed output\n' >&2; exit 1; }
 
 mkdir -p "$temporary_dir/empty/bin"
 ln -s "$(command -v bash)" "$temporary_dir/empty/bin/bash"
-PATH="$temporary_dir/empty/bin" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init.sh" \
+PATH="$temporary_dir/empty/bin" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" \
     bash --noprofile --norc -euo pipefail -c 'source "$COMPLETION_SOURCE"'
 
 printf 'Bash completion smoke check passed.\n'

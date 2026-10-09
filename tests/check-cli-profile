@@ -19,18 +19,23 @@ shared_paths=(
     .tmux.conf
     .vimrc
     .config/mise/config.toml
+    .config/mise/mise.lock
+    .config/bash/aliases
+    .config/bash/completions/init
     .local/bin/neofetch
     .local/bin/agent-worker
     .local/share/blesh/ble.sh
-    .config/blesh/init.sh
+    .config/blesh/init
     .config/neofetch/cat
     .config/neofetch/config.conf
     .config/starship.toml
     .config/nvim/init.lua
     .config/nvim/lua/config/clipboard.lua
-    .config/nvim/lua/config/lazy.lua
     .config/nvim/lua/config/options.lua
     .config/nvim/lua/plugins/gruvbox_material.lua
+    .config/nvim/lua/plugins/extras.lua
+    .config/nvim/lua/plugins/disabled.lua
+    .config/nvim/lua/plugins/good_to_have.lua
     .config/yazi/theme.toml
     .config/yazi/yazi.toml
     .config/yazi/flavors/gruvbox-material.yazi/flavor.toml
@@ -61,8 +66,8 @@ desktop_paths=(
     .local/share/fonts/IoskeleyMonoTermNerdFont/IoskeleyMonoTermNerdFontMono-Italic.ttf
     .local/share/fonts/IoskeleyMonoTermNerdFont/IoskeleyMonoTermNerdFontMono-BoldItalic.ttf
     Pictures/wallpaper.jpg
-    .chezmoiscripts/install_fedora_sway_packages.sh
-    .chezmoiscripts/zz_install_gruvbox_desktop.sh
+    .chezmoiscripts/install_fedora_sway_packages
+    .chezmoiscripts/zz_install_gruvbox_desktop
 )
 
 for path in "${shared_paths[@]}"; do
@@ -102,8 +107,8 @@ for expected in \
     fi
 done
 
-fedora_packages="$repo_root/.chezmoiscripts/run_onchange_after_install_fedora_sway_packages.sh.tmpl"
-theme_script="$repo_root/.chezmoiscripts/run_onchange_after_zz_install_gruvbox_desktop.sh.tmpl"
+fedora_packages="$repo_root/.chezmoiscripts/run_onchange_after_install_fedora_sway_packages.tmpl"
+theme_script="$repo_root/.chezmoiscripts/run_onchange_after_zz_install_gruvbox_desktop.tmpl"
 for script in "$fedora_packages" "$theme_script"; do
     if ! grep -Fq '!= "fedora-sway"' "$script"; then
         printf 'Desktop provisioning is not profile-gated: %s\n' "$script" >&2
@@ -144,7 +149,7 @@ if ! grep -Fq 'homelab_mcp_url = "https://mcp-server.home.arpa/mcp/"' <<<"$gener
     exit 1
 fi
 
-devpod_script="$repo_root/.chezmoiscripts/run_onchange_after_install_devpod.sh.tmpl"
+devpod_script="$repo_root/.chezmoiscripts/run_onchange_after_install_devpod.tmpl"
 rendered_devpod_script="$(chezmoi --source "$repo_root" \
     execute-template <"$devpod_script")"
 if ! bash -n <<<"$rendered_devpod_script"; then
@@ -157,7 +162,7 @@ if ! grep -Fq 'v0.6.15' <<<"$rendered_devpod_script" || \
     exit 1
 fi
 
-package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_packages.sh.tmpl"
+package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_packages.tmpl"
 rendered_package_script="$(chezmoi --source "$repo_root" execute-template <"$package_script")"
 test_root="$(mktemp -d)"
 trap 'rm -rf -- "$test_root"' EXIT
@@ -171,25 +176,29 @@ call_log="$test_root/mise.log"
 env HOME="$test_home" PATH="$test_bin:/usr/bin:/bin" CALL_LOG="$call_log" \
     bash -c "$rendered_package_script"
 expected_log="$test_root/expected-mise.log"
-printf 'trust %s\ninstall\n' "$test_home/.config/mise/config.toml" >"$expected_log"
+printf 'trust %s\ninstall --locked --cd %s\n' \
+    "$test_home/.config/mise/config.toml" "$test_home" >"$expected_log"
 if ! diff -u "$expected_log" "$call_log"; then
     printf 'Package installer did not find mise on PATH and trust the applied config.\n' >&2
     exit 1
 fi
 
-cli_dependencies_script="$repo_root/.chezmoiscripts/run_onchange_after_install_cli_dependencies.sh.tmpl"
+cli_dependencies_script="$repo_root/.chezmoiscripts/run_onchange_after_install_cli_dependencies.tmpl"
 rendered_cli_dependencies_script="$(chezmoi --source "$repo_root" execute-template <"$cli_dependencies_script")"
 if ! bash -n <<<"$rendered_cli_dependencies_script"; then
     printf 'CLI dependency installer has invalid Bash syntax.\n' >&2
     exit 1
 fi
-for tool in neovim yazi fd fzf lazygit ripgrep jq glab kubectl helm flux2; do
-    if ! grep -Eq "^${tool} = \"latest\"$" "$repo_root/dot_config/mise/config.toml"; then
-        printf 'mise config is missing CLI tool: %s\n' "$tool" >&2
+for tool in bat lsd fd usage neovim fzf ripgrep node chezmoi; do
+    if ! grep -Eq "^${tool} = \"[0-9]" "$repo_root/dot_config/mise/config.toml"; then
+        printf 'mise config is missing an exact version for: %s\n' "$tool" >&2
         exit 1
     fi
 done
-grep -Eq '^node = "24"$' "$repo_root/dot_config/mise/config.toml"
+grep -Fxq 'min_version = "2026.10.5"' "$repo_root/dot_config/mise/config.toml"
+grep -Fxq 'minimum_release_age = "7d"' "$repo_root/dot_config/mise/config.toml"
+grep -Fxq 'pin = true' "$repo_root/dot_config/mise/config.toml"
+grep -Fxq 'lockfile = true' "$repo_root/dot_config/mise/config.toml"
 if grep -Eq '^zoxide[[:space:]]*=' "$repo_root/dot_config/mise/config.toml"; then
     printf 'mise config still installs zoxide.\n' >&2
     exit 1
@@ -213,7 +222,7 @@ for package in docker.io moby-engine docker-cli openssh-client openssh-clients c
     fi
 done
 
-pi_installer="$repo_root/.chezmoiscripts/run_onchange_after_install_pi.sh.tmpl"
+pi_installer="$repo_root/.chezmoiscripts/run_onchange_after_install_pi.tmpl"
 rendered_pi_installer="$(chezmoi --source "$repo_root" execute-template <"$pi_installer")"
 if ! bash -n <<<"$rendered_pi_installer" || \
     ! grep -Fq 'https://pi.dev/install.sh' <<<"$rendered_pi_installer" || \

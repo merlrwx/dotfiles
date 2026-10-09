@@ -3,6 +3,7 @@
 set -euo pipefail
 
 # packages hash: {{ include "dot_config/mise/config.toml" | sha256sum }}
+# lockfile hash: {{ include "dot_config/mise/mise.lock" | sha256sum }}
 
 if [ -x "$HOME/.local/bin/mise" ]; then
     MISE="$HOME/.local/bin/mise"
@@ -23,4 +24,4 @@ if [ -f "$HOME/.config/mise/config.toml" ]; then
     "$MISE" trust "$HOME/.config/mise/config.toml"
 fi
 
-"$MISE" install
+"$MISE" install --locked --cd "$HOME"

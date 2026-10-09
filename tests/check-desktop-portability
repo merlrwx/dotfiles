@@ -22,7 +22,7 @@ for path in "${required_paths[@]}"; do
     fi
 done
 
-package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_fedora_sway_packages.sh.tmpl"
+package_script="$repo_root/.chezmoiscripts/run_onchange_after_install_fedora_sway_packages.tmpl"
 for package in thunar thunar-archive-plugin tumbler gvfs gvfs-smb exo xarchiver gtk-murrine-engine; do
     if ! grep -Eq "^[[:space:]]+${package}$" "$package_script"; then
         printf 'Missing Fedora desktop package: %s\n' "$package" >&2
@@ -30,7 +30,7 @@ for package in thunar thunar-archive-plugin tumbler gvfs gvfs-smb exo xarchiver 
     fi
 done
 
-desktop_script="$repo_root/.chezmoiscripts/run_onchange_after_zz_install_gruvbox_desktop.sh.tmpl"
+desktop_script="$repo_root/.chezmoiscripts/run_onchange_after_zz_install_gruvbox_desktop.tmpl"
 expected_theme_sha=67126883eebaa480aa1ff85e3582aba1c2ea7b44ff41bc1afc139ee77ab05568
 grep -Fq 'TheGreatMcPain/gruvbox-material-gtk/archive/bb306ae972273cbfcbf78f8b772662e8b0678d82.tar.gz' "$desktop_script"
 grep -Fq "$expected_theme_sha" "$desktop_script"

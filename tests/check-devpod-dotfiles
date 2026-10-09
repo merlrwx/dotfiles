@@ -4,7 +4,7 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-bash -n "$repo_root/install.sh"
+bash -n "$repo_root/install"
 bash -n "$repo_root/assets/devpod/bashrc"
 
 python3 - "$repo_root" <<'PY'
@@ -29,6 +29,37 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         "case \"$*\" in\n"
+        "  '-fsSL https://mise.run')\n"
+        "    printf 'mise-installer\\n' >>\"$HOME/curl-installer-calls\"\n"
+        "    cat <<'INSTALLER'\n"
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "install -d -m 0755 \"$(dirname -- \"$MISE_INSTALL_PATH\")\"\n"
+        "cat >\"$MISE_INSTALL_PATH\" <<'MISE'\n"
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "case \"${1-}\" in\n"
+        "  --version) printf '2026.10.5 linux-x64\\n' ;;\n"
+        "  trust|install) printf '%s\\n' \"$*\" >>\"$HOME/mise-calls\" ;;\n"
+        "  activate) exit 0 ;;\n"
+        "  completion)\n"
+        "    cat <<'COMPLETION'\n"
+        "__start_mise() { COMPREPLY=(activate install trust); }\n"
+        "complete -F __start_mise mise\n"
+        "COMPLETION\n"
+        "    ;;\n"
+        "  exec)\n"
+        "    printf '%s\\n' \"$*\" >>\"$HOME/mise-calls\"\n"
+        "    shift\n"
+        "    [[ ${1-} == -- ]] && shift\n"
+        "    command \"$@\"\n"
+        "    ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n"
+        "MISE\n"
+        "chmod 0755 \"$MISE_INSTALL_PATH\"\n"
+        "INSTALLER\n"
+        "    ;;\n"
         "  '-fsSL https://chatgpt.com/codex/install.sh')\n"
         "    printf 'installed\\n' >>\"$HOME/codex-installer-calls\"\n"
         "    cat <<'INSTALLER'\n"
@@ -59,6 +90,17 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     )
     fake_curl.chmod(0o755)
 
+    fake_chezmoi = fake_bin / "chezmoi"
+    fake_chezmoi.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf '%s\\n' \"$*\" >\"$HOME/chezmoi-apply-args\"\n"
+        "install -d -m 0755 \"$HOME/.config/nvim/lua/config\"\n"
+        "printf '%s\\n' '-- starter init' >\"$HOME/.config/nvim/init.lua\"\n"
+        "printf '%s\\n' '-- upstream lazy bootstrap' >\"$HOME/.config/nvim/lua/config/lazy.lua\"\n"
+    )
+    fake_chezmoi.chmod(0o755)
+
     env = os.environ.copy()
     env["HOME"] = str(home)
     env["PATH"] = f"{fake_bin}:/usr/local/bin:/usr/bin:/bin"
@@ -73,7 +115,7 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
                 + '\n[projects."/workspace/project"]\ntrust_level = "trusted"\n'
             )
         subprocess.run(
-            ["bash", str(repo_root / "install.sh")],
+            ["bash", str(repo_root / "install")],
             env=env,
             text=True,
             capture_output=True,
@@ -119,6 +161,17 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     assert (home / ".codex/skills/autonomous-goal/SKILL.md").is_file()
     assert (home / ".config/starship.toml").is_file()
     assert (home / ".config/nvim/init.lua").is_file()
+    assert (home / ".config/nvim/lua/config/lazy.lua").is_file()
+    assert (home / ".config/bash/aliases").read_text() == (repo_root / "dot_config/bash/aliases").read_text()
+    assert (home / ".config/bash/completions/init").is_file()
+    assert (home / ".config/mise/config.toml").read_text() == (repo_root / "dot_config/mise/config.toml").read_text()
+    assert (home / ".config/mise/mise.lock").read_text() == (repo_root / "dot_config/mise/mise.lock").read_text()
+    mise_calls = (home / "mise-calls").read_text().splitlines()
+    assert mise_calls[0] == f"trust --yes {home}/.config/mise/config.toml"
+    assert mise_calls[1] == f"install --locked --cd {home}"
+    assert mise_calls[2].startswith("exec -- chezmoi --source ")
+    assert "apply --force --include=files " + str(home / ".config/nvim") in mise_calls[2]
+    assert str(home) in (home / "chezmoi-apply-args").read_text()
     assert (home / ".local/bin/codex").is_file()
     assert (home / "codex-installer-calls").read_text().splitlines() == ["installed"]
     assert codex_config.read_text().startswith('[tui]\ntheme = "gruvbox-material-hard"')
@@ -145,7 +198,6 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
 
     # The workspace overlay copies no host tools or credentials.
     for absent in (
-        ".config/mise/config.toml",
         ".config/herdr/config.toml",
         ".codex/auth.json",
         ".pi/agent/auth.json",
@@ -167,6 +219,24 @@ with TemporaryDirectory(prefix="devpod-existing-codex-") as temp_dir:
     fake_pi = fake_bin / "pi"
     fake_pi.write_text("#!/usr/bin/env bash\nexit 0\n")
     fake_pi.chmod(0o755)
+    local_bin = home / ".local/bin"
+    local_bin.mkdir(parents=True)
+    fake_mise = local_bin / "mise"
+    fake_mise.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "case \"${1-}\" in\n"
+        "  --version) printf '2026.10.5 linux-x64\\n' ;;\n"
+        "  trust|install|activate) exit 0 ;;\n"
+        "  exec) shift; [[ ${1-} == -- ]] && shift; command \"$@\" ;;\n"
+        "  completion) printf 'complete -W \"activate install\" mise\\n' ;;\n"
+        "  *) exit 2 ;;\n"
+        "esac\n"
+    )
+    fake_mise.chmod(0o755)
+    fake_chezmoi = fake_bin / "chezmoi"
+    fake_chezmoi.write_text("#!/usr/bin/env bash\nexit 0\n")
+    fake_chezmoi.chmod(0o755)
     fake_curl = fake_bin / "curl"
     fake_curl.write_text("#!/usr/bin/env bash\nexit 8\n")
     fake_curl.chmod(0o755)
@@ -175,7 +245,7 @@ with TemporaryDirectory(prefix="devpod-existing-codex-") as temp_dir:
     env["PATH"] = f"{fake_bin}:/usr/local/bin:/usr/bin:/bin"
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     subprocess.run(
-        ["bash", str(repo_root / "install.sh")],
+        ["bash", str(repo_root / "install")],
         env=env,
         text=True,
         capture_output=True,

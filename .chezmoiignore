@@ -1,6 +1,6 @@
 setup
 old-setup
-install.sh
+install
 README.md
 .config/agents/**
 alacritty/**
@@ -34,7 +34,7 @@ tests/**
 .config/xfce4/**
 .local/bin/sway-snip
 .local/share/applications/**
-.chezmoiscripts/install_fedora_sway_packages.sh
-.chezmoiscripts/zz_install_gruvbox_desktop.sh
+.chezmoiscripts/install_fedora_sway_packages
+.chezmoiscripts/zz_install_gruvbox_desktop
 Pictures/wallpaper.jpg
 {{- end }}

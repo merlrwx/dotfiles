@@ -145,3 +145,19 @@ if type -P herdr >/dev/null 2>&1; then
         fi
     fi
 fi
+
+# Load Flux's native command and resource completions when the CLI is installed.
+if type -P flux >/dev/null 2>&1; then
+    if __dotfiles_flux_completion="$(command flux completion bash 2>/dev/null)"; then
+        eval "$__dotfiles_flux_completion"
+    fi
+    unset __dotfiles_flux_completion
+fi
+
+# Mise activation adds tools to PATH; this registers their CLI completions.
+if type -P mise >/dev/null 2>&1; then
+    if __dotfiles_mise_completion="$(command mise completion bash 2>/dev/null)"; then
+        eval "$__dotfiles_mise_completion"
+    fi
+    unset __dotfiles_mise_completion
+fi

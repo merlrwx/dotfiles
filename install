@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# ~~~~~~~~~~~~~~~ Paths and shared configuration ~~~~~~~~~~~~~~~~~~~~~~~~
+
+dotfiles_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+workspace_config="$HOME/.config/merlrwx"
+workspace_bashrc="$workspace_config/devpod.bashrc"
+workspace_gitconfig="$workspace_config/gitconfig"
+mise_config="$HOME/.config/mise/config.toml"
+mise_lock="$HOME/.config/mise/mise.lock"
+mise_bin="$HOME/.local/bin/mise"
+codex_config="$HOME/.codex/config.toml"
+source_line='[[ -r "$HOME/.config/merlrwx/devpod.bashrc" ]] && source "$HOME/.config/merlrwx/devpod.bashrc"'
+
+install -Dm0644 "$dotfiles_root/assets/devpod/bashrc" "$workspace_bashrc"
+install -Dm0644 "$dotfiles_root/assets/devpod/gitconfig" "$workspace_gitconfig"
+install -Dm0644 "$dotfiles_root/dot_config/starship.toml" \
+    "$HOME/.config/starship.toml"
+install -Dm0644 "$dotfiles_root/dot_config/bash/aliases" \
+    "$HOME/.config/bash/aliases"
+install -Dm0644 "$dotfiles_root/dot_config/bash/completions/init" \
+    "$HOME/.config/bash/completions/init"
+install -Dm0644 "$dotfiles_root/dot_config/mise/config.toml" "$mise_config"
+install -Dm0644 "$dotfiles_root/dot_config/mise/mise.lock" "$mise_lock"
+
+# ~~~~~~~~~~~~~~~ Shared Mise tools and Neovim config ~~~~~~~~~~~~~~~~~~~~~~~~
+
+if ! command -v curl >/dev/null 2>&1; then
+    printf 'curl is required to install Mise and workspace tools.\n' >&2
+    exit 1
+fi
+
+minimum_mise_version="$(sed -n 's/^min_version = "\([0-9.]*\)"$/\1/p' "$mise_config")"
+if [[ -z "$minimum_mise_version" ]]; then
+    printf 'Mise config is missing its minimum version.\n' >&2
+    exit 1
+fi
+
+# Update an older local Mise binary before asking it to read the config.
+version_at_least() {
+    local actual="${1%% *}" required="$2" index actual_part required_part
+    local -a actual_parts required_parts
+
+    actual="${actual#v}"
+    IFS=. read -r -a actual_parts <<<"$actual"
+    IFS=. read -r -a required_parts <<<"$required"
+
+    for index in 0 1 2; do
+        actual_part="${actual_parts[$index]:-0}"
+        required_part="${required_parts[$index]:-0}"
+        [[ $actual_part =~ ^[0-9]+$ && $required_part =~ ^[0-9]+$ ]] || return 1
+        if ((10#$actual_part > 10#$required_part)); then
+            return 0
+        elif ((10#$actual_part < 10#$required_part)); then
+            return 1
+        fi
+    done
+    return 0
+}
+
+mise_version=""
+if [[ -x "$mise_bin" ]]; then
+    IFS=' ' read -r mise_version _ < <("$mise_bin" --version 2>/dev/null || true)
+fi
+if ! version_at_least "$mise_version" "$minimum_mise_version"; then
+    curl -fsSL https://mise.run | MISE_INSTALL_PATH="$mise_bin" sh
+fi
+
+if [[ -x "$mise_bin" ]]; then
+    MISE="$mise_bin"
+elif command -v mise >/dev/null 2>&1; then
+    MISE="$(command -v mise)"
+else
+    printf 'Mise installation did not create an executable.\n' >&2
+    exit 1
+fi
+
+"$MISE" trust --yes "$mise_config"
+"$MISE" install --locked --cd "$HOME"
+
+# Use the source tree so chezmoi can fetch the current LazyVim starter archive.
+(
+    cd -- "$HOME"
+    "$MISE" exec -- chezmoi --source "$dotfiles_root" --destination "$HOME" \
+        apply --force --include=files "$HOME/.config/nvim"
+)
+
+# ~~~~~~~~~~~~~~~ Shared agent instructions and skills ~~~~~~~~~~~~~~~~~~~~~~~~
+
+for agent_directory in "$HOME/.codex" "$HOME/.pi/agent"; do
+    install -Dm0644 "$dotfiles_root/dot_config/agents/AGENTS.md" \
+        "$agent_directory/AGENTS.md"
+done
+
+while IFS= read -r -d '' skill_file; do
+    relative_path="${skill_file#"$dotfiles_root/dot_codex/skills/"}"
+    install -Dm0644 "$skill_file" "$HOME/.codex/skills/$relative_path"
+done < <(find "$dotfiles_root/dot_codex/skills" -type f -print0)
+
+# ~~~~~~~~~~~~~~~ Codex and Pi workspace setup ~~~~~~~~~~~~~~~~~~~~~~~~
+
+if [[ ! -e "$codex_config" ]]; then
+    install -Dm0644 "$dotfiles_root/assets/devpod/codex-config.toml" "$codex_config"
+fi
+
+codex_install_dir="$HOME/.local/bin"
+if ! command -v codex >/dev/null 2>&1 && [[ ! -x "$codex_install_dir/codex" ]]; then
+    export CODEX_INSTALL_DIR="$codex_install_dir"
+    curl -fsSL https://chatgpt.com/codex/install.sh | sh
+fi
+
+pi_install_dir="$HOME/.local/bin"
+if ! command -v pi >/dev/null 2>&1 && [[ ! -x "$pi_install_dir/pi" ]]; then
+    curl -fsSL https://pi.dev/install.sh | sh
+fi
+
+# ~~~~~~~~~~~~~~~ Bash and Git integration ~~~~~~~~~~~~~~~~~~~~~~~~
+
+if [[ ! -f "$HOME/.bashrc" ]]; then
+    install -Dm0644 /dev/null "$HOME/.bashrc"
+fi
+if ! grep -Fqx -- "$source_line" "$HOME/.bashrc"; then
+    {
+        [[ ! -s "$HOME/.bashrc" ]] || printf '\n'
+        printf '# Lightweight personal shell settings for DevPod workspaces.\n%s\n' \
+            "$source_line"
+    } >>"$HOME/.bashrc"
+fi
+
+if ! git config --global --get-all include.path | grep -Fqx -- "$workspace_gitconfig"; then
+    git config --global --add include.path "$workspace_gitconfig"
+fi
+
+printf 'Installed shared Mise tools and lightweight workspace dotfiles. Project tools remain in the project DevContainer.\n'

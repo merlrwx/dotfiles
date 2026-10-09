@@ -1,10 +1,11 @@
 # Fedora Sway and CLI Dotfiles
 
 Portable configuration for a Fedora Sway desktop and a headless CLI host.
-Chezmoi manages the configuration and setup scripts; mise manages CLI tools and
-the Node.js runtime. Both profiles get the shared shell, development tools,
-Codex, Pi, Herdr, and DevPod. Homelab MCP is an optional capability; the
-desktop profile adds GUI configuration.
+Chezmoi manages configuration and setup scripts; Mise manages a pinned, locked
+set of shared CLI tools and the Node.js runtime. The host and DevPod use the
+same global Mise config. Both host profiles get the shared shell, development
+tools, Codex, Pi, Herdr, and DevPod. Homelab MCP is optional; the desktop
+profile adds GUI configuration.
 
 ## Install
 
@@ -14,14 +15,14 @@ Install Git and curl, then initialize chezmoi and select `fedora-sway` or `cli`:
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/merlrwx/dotfiles.git
 ```
 
-The first apply installs CLI prerequisites and the tools declared in mise.
-Chezmoi's Pi setup script runs Pi's official installer inside mise's managed
-Node.js environment. The desktop profile also installs Fedora desktop packages,
-the IoskeleyMono font, and Gruvbox Material themes. The CLI profile uses no
-host-name-specific role.
+The first apply installs CLI prerequisites and the pinned tools declared in
+Mise using the committed lockfile. Chezmoi's Pi setup script runs Pi's official
+installer inside Mise's managed Node.js environment. The desktop profile also
+installs Fedora desktop packages, the IoskeleyMono font, and Gruvbox Material
+themes. The CLI profile uses no host-name-specific role.
 
 If starting from a clone, run `./setup` from the repository. On a new machine,
-sign in to Codex and Pi separately after setup. The root `install.sh` is a
+sign in to Codex and Pi separately after setup. The root `install` is a
 DevPod dotfiles callback; it installs a lightweight workspace setup and is not
 the host setup command.
 
@@ -124,16 +125,17 @@ instructions and `mise` tasks take precedence when available.
 
 ### Lightweight DevPod dotfiles
 
-DevPod can install the personal shell, editor, Git defaults, and shared agent
-instructions without applying the full host CLI profile. The project continues
-to provide its language and platform tools through `.devcontainer`.
+DevPod installs the same pinned global Mise tools as the host, plus the personal
+shell, editor, Git defaults, and shared agent instructions. Project-specific
+runtimes and platform tools remain in the project's `mise.toml` and
+`.devcontainer`.
 
 For one workspace, add the dotfiles repository when creating it:
 
 ```bash
 devpod up <project-or-workspace> \
   --dotfiles https://github.com/merlrwx/dotfiles.git \
-  --dotfiles-script install.sh
+  --dotfiles-script install
 ```
 
 To use this for all new workspaces in the selected DevPod context:
@@ -141,19 +143,19 @@ To use this for all new workspaces in the selected DevPod context:
 ```bash
 devpod context set-options \
   -o DOTFILES_URL=https://github.com/merlrwx/dotfiles.git \
-  -o DOTFILES_SCRIPT=install.sh
+  -o DOTFILES_SCRIPT=install
 ```
 
-The workspace installer adds Codex and Pi, a small Bash overlay, Gruvbox
-Material Starship and Neovim settings, Git defaults, shared agent instructions,
-and a minimal Codex theme config. The Codex theme is seeded only when no user
-config exists. The installer does not install the host `mise` tool set, Herdr,
-Pi's host-only autonomous-goal extension, or homelab MCP configuration. It
-never copies host agent auth or MCP files, Git, SSH, Docker, or provider
-credentials. DevPod provides HTTPS Git credential helpers, SSH agent
-forwarding, and Docker credential forwarding where supported. GitHub/GitLab API
-CLI sign-ins and other provider credentials need their own supported auth flow;
-they are not the Git credential helper.
+The workspace installer installs the same pinned global Mise tools as the host,
+then adds Codex and Pi, the shared Neovim config, a small Bash overlay, Gruvbox
+Material Starship settings, Git defaults, shared agent instructions, and a
+minimal Codex theme config. The Codex theme is seeded only when no user config
+exists. It does not install Herdr, Pi's host-only autonomous-goal extension, or
+homelab MCP configuration. It never copies host agent auth or MCP files, Git,
+SSH, Docker, or provider credentials. DevPod provides HTTPS Git credential
+helpers, SSH agent forwarding, and Docker credential forwarding where
+supported. GitHub/GitLab API CLI sign-ins and other provider credentials need
+their own supported auth flow; they are not the Git credential helper.
 See [DevPod dotfiles](https://devpod.sh/docs/developing-in-workspaces/dotfiles-in-a-workspace)
 and [DevPod credential forwarding](https://devpod.sh/docs/developing-in-workspaces/credentials).
 
@@ -174,7 +176,7 @@ devpod up "$repo" \
   --id "$task" \
   --ide none \
   --dotfiles https://github.com/merlrwx/dotfiles.git \
-  --dotfiles-script install.sh
+  --dotfiles-script install
 ```
 
 Start a named Herdr session on the host and connect it to that worker:
@@ -239,6 +241,15 @@ Merge these values with the project's existing DevContainer settings. Use this
 SELinux-specific mount only on enforcing Linux hosts; other hosts should keep
 their normal workspace mount. See [DevPod Linux troubleshooting](https://devpod.sh/docs/troubleshooting/linux-troubleshooting).
 
+## Neovim and shared tools
+
+The same pinned global Mise tools are available on the host and in DevPod; a
+project's Mise config can add or override runtimes for that project. Common
+JSON, Markdown, TOML, and YAML language support is global in Neovim, while
+project-specific language extras can be added through `.lazy.lua`. fzf-lua is
+the active picker. See [Neovim setup and key guide](docs/neovim.md) for search
+keys, LazyVim defaults, the optional plugins, and the Mise update workflow.
+
 ## Shell, theme, and typography
 
 The shared CLI palette is Gruvbox Material Dark Hard: it is reflected in the
@@ -251,14 +262,15 @@ client.
 
 Bash uses ble.sh for interactive editing and completion, including syntax
 highlighting, suggestions, and the navigable menu; Starship owns the prompt and
-uses a portable ASCII `>` plus a parenthesized branch such as `(main)`. Git
-status appears as colored labels when relevant: `+` staged, `!` modified, `?`
+uses a portable ASCII `>` plus a parenthesized branch such as `(main)`. `cat`
+uses `bat` and the `ls` family uses `lsd` when those Mise tools are installed.
+Git status appears as colored labels when relevant: `+` staged, `!` modified, `?`
 untracked, `^` ahead, `v` behind, and `<>` diverged; `up to date` means the
 branch matches its remote. Conflicts, renames, deletions, type changes, and
 stashes are named as well. Register native Bash providers in
-`~/.config/bash/completions/init.sh` with
-`command <tool> completion bash`; add wrappers there when runtime candidates are
-missing.
+`~/.config/bash/completions/init` with `command <tool> completion bash`; Flux
+and Mise completions are loaded there when those tools are installed. Add
+wrappers there when runtime candidates are missing.
 At an idle prompt, Ctrl+C cancels the current line in both vi editing modes. The
 `k` alias retains kubectl completion, Fabric pattern aliases are generated from
 installed pattern names, and `yt` requests a video transcript. Neofetch shows a
