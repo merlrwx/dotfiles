@@ -17,8 +17,10 @@ available with:
 - `Space n`: show notification history.
 - `Ctrl s`: save the current file.
 
-The defaults are documented in [LazyVim's keymap reference](https://www.lazyvim.org/keymaps).
-Keep using those defaults while learning; this config adds no personal keymaps.
+`Ctrl d` and `Ctrl u` scroll half a screen down or up, then center the cursor.
+`scrolloff = 8` keeps eight lines between the cursor and the viewport edge when
+possible. The other defaults are documented in
+[LazyVim's keymap reference](https://www.lazyvim.org/keymaps).
 
 ## Search with fzf-lua
 
@@ -38,8 +40,9 @@ mapping list.
 
 ## Optional plugins
 
-- `:NoNeckPain` centers the current editing window; run it again to return to
-the normal layout. `Space n` remains LazyVim's notification history.
+- NoNeckPain starts automatically and centers the current editing window. Run
+  `:NoNeckPain` to return to the normal layout or center it again. `Space n`
+  remains LazyVim's notification history.
 - Open a Markdown, Org, or AsciiDoc file and run `:Presenting` to show it as
   slides. Use `n`/`p` for next/previous slide, `f`/`l` for first/last, and `q`
   to exit.
