@@ -5,7 +5,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 external="$repo_root/.chezmoiexternals/blesh.toml"
 bashrc="$repo_root/dot_bashrc"
-config="$repo_root/dot_config/blesh/init"
+config="$repo_root/dot_config/blesh/init.sh"
 completions="$repo_root/dot_config/bash/completions/init"
 readme="$repo_root/README.md"
 

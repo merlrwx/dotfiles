@@ -25,7 +25,7 @@ shared_paths=(
     .local/bin/neofetch
     .local/bin/agent-worker
     .local/share/blesh/ble.sh
-    .config/blesh/init
+    .config/blesh/init.sh
     .config/neofetch/cat
     .config/neofetch/config.conf
     .config/starship.toml
