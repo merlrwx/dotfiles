@@ -6,6 +6,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 python3 - "$repo_root" <<'PY'
 from pathlib import Path
+import json
 import tomllib
 import sys
 
@@ -28,9 +29,14 @@ for name, requested in config["tools"].items():
     entry = entries[0]
     assert entry["version"] == requested, name
     assert entry["specifiers"] == [requested], name
-    for platform in ("linux-x64", "linux-arm64"):
-        platform_entry = entry[f"platforms.{platform}"]
-        assert platform_entry["url"].startswith("https://"), (name, platform)
+    if name.startswith("pipx:"):
+        lock_path = mise_dir / entry["uv"]["path"]
+        assert (lock_path / "uv.lock").is_file(), name
+        assert (lock_path / "pyproject.toml").is_file(), name
+    else:
+        for platform in ("linux-x64", "linux-arm64"):
+            platform_entry = entry[f"platforms.{platform}"]
+            assert platform_entry["url"].startswith("https://"), (name, platform)
 
 external = tomllib.loads((root / ".chezmoiexternals/neovim.toml").read_text())
 starter = external[".config/nvim"]
@@ -38,7 +44,7 @@ assert starter["type"] == "archive"
 assert starter["url"] == "https://github.com/LazyVim/starter/archive/refs/heads/main.tar.gz"
 assert starter["stripComponents"] == 1
 assert starter["refreshPeriod"] == "168h"
-assert set(starter["exclude"]) == {"**/init.lua", "**/options.lua"}
+assert set(starter["exclude"]) == {"**/init.lua", "**/options.lua", "**/keymaps.lua"}
 
 nvim = root / "dot_config/nvim"
 assert (nvim / "init.lua").is_file()
@@ -92,6 +98,19 @@ guide = (root / "docs/neovim.md").read_text()
 assert "same pinned global Mise tools" in readme
 for topic in ("Space f f", "Space s g", ":FzfLua live_grep", ".lazy.lua", ":NoNeckPain", ":Presenting", "mise upgrade --bump"):
     assert topic in guide, topic
+
+scaffold_skill = root / "dot_codex/skills/project-scaffold/SKILL.md"
+selection_rules = root / "dot_codex/skills/project-scaffold/references/selection-rules.md"
+assert scaffold_skill.is_file()
+assert selection_rules.is_file()
+assert "gh:merlrwx/devops-template" in scaffold_skill.read_text()
+assert "temporary directory" in scaffold_skill.read_text()
+assert "Flux" in selection_rules.read_text()
+shared_instructions = (root / "dot_config/agents/AGENTS.md").read_text()
+assert "project-scaffold" in shared_instructions
+
+pi_settings = json.loads((root / "dot_pi/agent/settings.json.tmpl").read_text())
+assert "~/.codex/skills/project-scaffold" in pi_settings["skills"]
 PY
 
 printf 'Dotfiles refactor configuration checks passed.\n'

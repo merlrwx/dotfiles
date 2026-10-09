@@ -480,6 +480,27 @@ url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.gz"
 checksum = "sha256:6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff"
 url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz"
 
+[[tools."pipx:copier"]]
+version = "9.18.2"
+backend = "pipx:copier"
+specifiers = ["9.18.2"]
+uv = { path = ".mise/locks/pipx-copier/9.18.2", digest = "sha256:cff8a49c87bb8eac495bff88a50c7622389c0637d5636bbe5c8266dd5ef38e79" }
+
+[[tools.python]]
+version = "3.14.8"
+backend = "core:python"
+specifiers = ["3.14.8"]
+
+[tools.python."platforms.linux-arm64"]
+checksum = "sha256:ece2bf3d4b47c80c2403c5f32fa51a9458abaee93c10def8acafb5f45163e77d"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.14.8+20261003-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.linux-x64"]
+checksum = "sha256:d9ec7a6935ade8b671a57ebaf111083d7314eab8dae5071d167054dadd2b97d6"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.14.8+20261003-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
 [[tools.ripgrep]]
 version = "15.2.0"
 backend = "aqua:BurntSushi/ripgrep"
@@ -539,6 +560,23 @@ url_api = "https://api.github.com/repos/jdx/usage/releases/assets/476575885"
 checksum = "sha256:623d307595faf35f10f0ca260103354eea4090f02c475bd2c34a990753229ff2"
 url = "https://github.com/jdx/usage/releases/download/v3.5.5/usage-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/jdx/usage/releases/assets/476575670"
+
+[[tools.uv]]
+version = "0.12.22"
+backend = "aqua:astral-sh/uv"
+specifiers = ["0.12.22"]
+
+[tools.uv."platforms.linux-arm64"]
+checksum = "sha256:6f66a14e8239871fb477f9746c941fedfa77e8fe28a8bc7c07e1dc7f53a66712"
+url = "https://github.com/astral-sh/uv/releases/download/0.12.22/uv-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/604418317"
+provenance = "github-attestations"
+
+[tools.uv."platforms.linux-x64"]
+checksum = "sha256:b9980552309f09c15172b8be828555e375097f16deb459795ce7bfd200380f0b"
+url = "https://github.com/astral-sh/uv/releases/download/0.12.22/uv-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/604418465"
+provenance = "github-attestations"
 
 [[tools.vim]]
 version = "9.2.1054"

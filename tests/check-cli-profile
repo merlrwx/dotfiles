@@ -41,6 +41,7 @@ shared_paths=(
     .config/yazi/flavors/gruvbox-material.yazi/flavor.toml
     .codex/config.toml
     .codex/AGENTS.md
+    .codex/skills/project-scaffold/SKILL.md
     .codex/themes/gruvbox-material-hard.tmTheme
     .pi/agent/AGENTS.md
     .pi/agent/settings.json
@@ -189,12 +190,13 @@ if ! bash -n <<<"$rendered_cli_dependencies_script"; then
     printf 'CLI dependency installer has invalid Bash syntax.\n' >&2
     exit 1
 fi
-for tool in bat lsd fd usage neovim fzf ripgrep node chezmoi; do
+for tool in bat lsd fd usage neovim fzf ripgrep node chezmoi python uv; do
     if ! grep -Eq "^${tool} = \"[0-9]" "$repo_root/dot_config/mise/config.toml"; then
         printf 'mise config is missing an exact version for: %s\n' "$tool" >&2
         exit 1
     fi
 done
+grep -Eq '^"pipx:copier" = "[0-9]' "$repo_root/dot_config/mise/config.toml"
 grep -Fxq 'min_version = "2026.10.5"' "$repo_root/dot_config/mise/config.toml"
 grep -Fxq 'minimum_release_age = "7d"' "$repo_root/dot_config/mise/config.toml"
 grep -Fxq 'pin = true' "$repo_root/dot_config/mise/config.toml"

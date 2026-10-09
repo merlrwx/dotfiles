@@ -159,6 +159,8 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     assert (home / ".codex/AGENTS.md").read_text() == shared_instructions
     assert (home / ".pi/agent/AGENTS.md").read_text() == shared_instructions
     assert (home / ".codex/skills/autonomous-goal/SKILL.md").is_file()
+    assert (home / ".codex/skills/project-scaffold/SKILL.md").is_file()
+    assert (home / ".codex/skills/project-scaffold/references/selection-rules.md").is_file()
     assert (home / ".config/starship.toml").is_file()
     assert (home / ".config/nvim/init.lua").is_file()
     assert (home / ".config/nvim/lua/config/lazy.lua").is_file()

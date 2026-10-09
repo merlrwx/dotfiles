@@ -21,6 +21,9 @@ helm = "4.3.0"
 flux2 = "2.9.6"
 lsd = "1.2.0"
 usage = "3.5.5"
+python = "3.14.8"
+uv = "0.12.22"
+"pipx:copier" = "9.18.2"
 
 [settings]
 pin = true

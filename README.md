@@ -4,7 +4,8 @@ Portable configuration for a Fedora Sway desktop and a headless CLI host.
 Chezmoi manages configuration and setup scripts; Mise manages a pinned, locked
 set of shared CLI tools and the Node.js runtime. The host and DevPod use the
 same global Mise config. Both host profiles get the shared shell, development
-tools, Codex, Pi, Herdr, and DevPod. Homelab MCP is optional; the desktop
+tools, Codex, Pi, Herdr, Copier, and DevPod. The `project-scaffold` skill is
+available to Codex and Pi from the shared `~/.codex/skills` directory. Homelab MCP is optional; the desktop
 profile adds GUI configuration.
 
 ## Install
