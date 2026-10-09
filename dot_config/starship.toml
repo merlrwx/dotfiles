@@ -5,12 +5,8 @@
 format = """
 ($username$hostname${custom.remote_host} )\
 $directory\
-${custom.branch_unstaged}\
-${custom.branch_staged}\
-${custom.branch_unborn}\
-${custom.branch_behind}\
-${custom.branch_ahead}\
-${custom.branch_synced}\
+$git_branch\
+$git_status\
 $cmd_duration\
 $line_break\
 $python\
@@ -41,48 +37,23 @@ success_symbol = "[>](#a9b665)"
 error_symbol = "[>](#ea6962)"
 vimcmd_symbol = "[<](#d3869b)"
 
-# Branch color: amber = changes to add, olive = staged, aqua = push, red = pull, grey = synced.
-[custom.branch_unstaged]
-command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
-when = '''! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"'''
-require_repo = true
-format = '[$output]($style) '
-style = "#b08b4e"
-
-[custom.branch_staged]
-command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
-when = '''git diff --quiet && test -z "$(git ls-files --others --exclude-standard)" && ! git diff --cached --quiet'''
-require_repo = true
-format = '[$output]($style) '
-style = "#87945d"
-
-[custom.branch_behind]
-command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
-when = '''test -z "$(git status --porcelain)" && git rev-parse --verify '@{u}' >/dev/null 2>&1 && test "$(git rev-list --count 'HEAD..@{u}')" -gt 0'''
-require_repo = true
-format = '[$output]($style) '
-style = "#b36a65"
-
-[custom.branch_unborn]
-command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
-when = '''test -z "$(git status --porcelain)" && ! git rev-parse --verify HEAD >/dev/null 2>&1'''
-require_repo = true
-format = '[$output]($style) '
+# The built-in Git modules avoid six separate custom commands on every prompt.
+[git_branch]
+format = '[$branch]($style) '
 style = "#928374"
 
-[custom.branch_ahead]
-command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
-when = '''test -z "$(git status --porcelain)" && git rev-parse --verify HEAD >/dev/null 2>&1 && { ! git rev-parse --verify '@{u}' >/dev/null 2>&1 || { test "$(git rev-list --count 'HEAD..@{u}')" -eq 0 && test "$(git rev-list --count '@{u}..HEAD')" -gt 0; }; }'''
-require_repo = true
-format = '[$output]($style) '
-style = "#688b82"
-
-[custom.branch_synced]
-command = '''git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD'''
-when = '''test -z "$(git status --porcelain)" && git rev-parse --verify '@{u}' >/dev/null 2>&1 && test "$(git rev-list --count 'HEAD..@{u}')" -eq 0 && test "$(git rev-list --count '@{u}..HEAD')" -eq 0'''
-require_repo = true
-format = '[$output]($style) '
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
 style = "#928374"
+conflicted = '[!](#ea6962)'
+untracked = '[?](#b08b4e)'
+modified = '[~](#b08b4e)'
+staged = '[+](#87945d)'
+renamed = '[»](#87945d)'
+deleted = '[-](#b08b4e)'
+ahead = '[⇡](#688b82)'
+behind = '[⇣](#b36a65)'
+diverged = '[⇕](#ea6962)'
 
 [cmd_duration]
 format = "[$duration]($style) "
