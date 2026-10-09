@@ -25,7 +25,7 @@ git -C "$test_root" check-ignore -q .agent/GOAL.md
 hook_output="$(printf '{"cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}\n' "$test_root" | "$agent_goal" hook-stop)"
 python3 -c 'import json,sys; assert json.load(sys.stdin)["decision"] == "block"' <<< "$hook_output"
 hook_output="$(printf '{"cwd":"%s","hook_event_name":"Stop","stop_hook_active":true}\n' "$test_root" | "$agent_goal" hook-stop)"
-python3 -c 'import json,sys; assert json.load(sys.stdin)["decision"] == "block"' <<< "$hook_output"
+[[ "$hook_output" == '{}' ]]
 
 (cd "$test_root" && "$agent_goal" pause --force --reason test)
 hook_output="$(printf '{"cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}\n' "$test_root" | "$agent_goal" hook-stop)"

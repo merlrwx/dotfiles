@@ -275,6 +275,13 @@ def command_hook_stop(_: argparse.Namespace) -> int:
         print(json.dumps({"systemMessage": "agent-goal Stop hook received invalid JSON"}))
         return 0
 
+    # Codex sets this after it has already continued once because of a Stop
+    # hook. Returning another block here can repeatedly inject the hook reason
+    # into the conversation instead of letting the continued turn finish.
+    if payload.get("stop_hook_active") is True:
+        print("{}")
+        return 0
+
     root = repo_root(payload.get("cwd") or os.getcwd(), required=False)
     if root is None:
         print("{}")
@@ -293,12 +300,10 @@ def command_hook_stop(_: argparse.Namespace) -> int:
         return 0
 
     reason = (
-        "The repository's autonomous goal is still active. Read .agent/GOAL.md and "
-        ".agent/PROGRESS.md, choose the next useful action, implement it, verify it, "
-        "and rewrite PROGRESS.md concisely. Do not stop because an approach or test "
-        "failed. When every acceptance criterion is satisfied, run 'agent-goal complete'. "
-        "Only for a genuine unavailable external dependency, record the evidence and "
-        "recovery action with 'agent-goal block'."
+        "Continue the active goal in .agent/GOAL.md. Read .agent/PROGRESS.md, make "
+        "and verify progress, then update the progress file. Run 'agent-goal complete' "
+        "when all acceptance criteria pass; use 'agent-goal block' only for an "
+        "unavailable external dependency, with evidence and a recovery action."
     )
     print(json.dumps({"decision": "block", "reason": reason}))
     return 0

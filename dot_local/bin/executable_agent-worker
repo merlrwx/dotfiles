@@ -412,9 +412,19 @@ def command_spawn(args: argparse.Namespace) -> int:
                 )
                 write_manifest(manifest_file, manifest)
 
-            run(
-                ["herdr", "agent", "start", args.name, "--kind", args.kind, "--pane", pane_id],
-            )
+            start_command = [
+                "herdr", "agent", "start", args.name,
+                "--kind", args.kind, "--pane", pane_id,
+            ]
+            if args.kind == "codex":
+                # Herdr starts a separate Codex CLI process, which does not
+                # inherit the coordinator TUI's selected permission mode.
+                # Match the full-access mode used by the host workflow.
+                start_command.extend([
+                    "--", "--sandbox", "danger-full-access",
+                    "--config", 'approval_policy="never"',
+                ])
+            run(start_command)
             with lock(state_dir / f".{args.run_id}.lock"):
                 manifest = read_manifest(manifest_file, repo=root)
                 task = manifest["tasks"][args.name]

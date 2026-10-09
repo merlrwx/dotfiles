@@ -91,6 +91,11 @@ agent-worker spawn \
   --base HEAD
 ```
 
+Codex workers start with full filesystem and network access and no approval
+prompts, matching the host's full-access workflow. Each worker is confined to
+its own Git worktree for file changes; it still has the host user's available
+credentials and other machine access. Pi workers use Pi's configured policy.
+
 Use `--depends-on phase-01` for a dependent task, and pass the verified
 integration commit as `--base`. The helper refuses a dirty source checkout,
 duplicate task names or branches, an existing worktree path, missing verifier,
