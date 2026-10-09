@@ -89,6 +89,7 @@ assert "mise completion bash" in completion_init
 installer = (root / "install").read_text()
 assert "dot_config/mise/config.toml" in installer
 assert "dot_config/mise/mise.lock" in installer
+assert "dot_config/mise/.mise/locks" in installer
 assert 'install --locked --cd "$HOME"' in installer
 assert "chezmoi --source \"$dotfiles_root\"" in installer
 assert 'apply --force --include=files "$HOME/.config/nvim"' in installer

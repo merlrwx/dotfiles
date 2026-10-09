@@ -168,6 +168,11 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     assert (home / ".config/bash/completions/init").is_file()
     assert (home / ".config/mise/config.toml").read_text() == (repo_root / "dot_config/mise/config.toml").read_text()
     assert (home / ".config/mise/mise.lock").read_text() == (repo_root / "dot_config/mise/mise.lock").read_text()
+    for locked_sidecar in ("uv.lock", "pyproject.toml"):
+        sidecar = ".mise/locks/pipx-copier/9.18.2/" + locked_sidecar
+        assert (home / ".config/mise" / sidecar).read_text() == (
+            repo_root / "dot_config/mise" / sidecar
+        ).read_text()
     mise_calls = (home / "mise-calls").read_text().splitlines()
     assert mise_calls[0] == f"trust --yes {home}/.config/mise/config.toml"
     assert mise_calls[1] == f"install --locked --cd {home}"

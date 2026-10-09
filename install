@@ -24,6 +24,11 @@ install -Dm0644 "$dotfiles_root/dot_config/bash/completions/init" \
     "$HOME/.config/bash/completions/init"
 install -Dm0644 "$dotfiles_root/dot_config/mise/config.toml" "$mise_config"
 install -Dm0644 "$dotfiles_root/dot_config/mise/mise.lock" "$mise_lock"
+if [[ -d "$dotfiles_root/dot_config/mise/.mise/locks" ]]; then
+    mkdir -p "$HOME/.config/mise/.mise/locks"
+    cp -a "$dotfiles_root/dot_config/mise/.mise/locks/." \
+        "$HOME/.config/mise/.mise/locks/"
+fi
 
 # ~~~~~~~~~~~~~~~ Shared Mise tools and Neovim config ~~~~~~~~~~~~~~~~~~~~~~~~
 
