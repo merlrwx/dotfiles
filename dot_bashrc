@@ -19,6 +19,8 @@ bind -x '"\C-l":clear'
 # Basic editor/browser
 export EDITOR=nvim
 export VISUAL=nvim
+# Include OS-installed certificate authorities for Node tools such as Pi's MCP client.
+export NODE_USE_SYSTEM_CA="${NODE_USE_SYSTEM_CA:-1}"
 # Preserve a host-provided opener in remote environments (for example, VS Code
 # Dev Containers); a container-local browser usually cannot open the host UI.
 

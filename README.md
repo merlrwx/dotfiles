@@ -120,6 +120,13 @@ herdr --session pi
 pi
 ```
 
+Pi executes tools with the permissions of the account that started it and does
+not need a `--yolo` flag. Project trust controls loading project resources; it
+does not grant additional operating-system permissions. Invoke skills explicitly
+with `/skill:grill-me` or `/skill:herdr`. The Herdr skill requires a Herdr pane.
+Bash enables Node's system certificate store so Pi can trust locally installed
+homelab certificate authorities.
+
 Both profiles include Git, SSH, curl, jq, mise, editors, terminal tools,
 GitHub/GitLab CLIs, kubectl, Helm, Flux, Docker, DevPod, Codex, Pi, and Herdr.
 Herdr manages host sessions and visibility. Repository DevContainer
@@ -283,7 +290,7 @@ where the client supports it; detach with the usual `Ctrl-b`, then `d`.
 ## Plan a complex change
 
 Discuss and research the idea in ChatGPT, save a draft `PLAN.md` in the
-repository, then use `$grill-me` to find missing decisions and sharpen its
+repository, then use `/skill:grill-me` to find missing decisions and sharpen its
 acceptance criteria in a Pi session. Keep that planning work separate. Start a
 fresh Codex session to implement the revised plan.
 

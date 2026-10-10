@@ -57,7 +57,7 @@ if grep -Eq 'plugins\."engineering-suite-(ponytail|teach)' "$config"; then
 fi
 assert_contains "$pi_settings" '"defaultProvider": "openai"'
 assert_contains "$pi_settings" '"theme": "system"'
-assert_contains "$pi_settings" 'engineering-suite-grill-me/2.0.0/skills/grill-me'
+assert_contains "$pi_settings" '"~/.pi/agent/skills/grill-me"'
 assert_contains "$pi_mcp" '"homelab-mcp"'
 assert_contains "$pi_mcp" '"exposure": "codemode"'
 assert_contains "$launcher" 'exec herdr "$@"'
@@ -84,7 +84,7 @@ rendered_settings="$(chezmoi --source "$repo_root" execute-template <"$pi_settin
 rendered_mcp="$(chezmoi --source "$repo_root" \
     --override-data '{"homelab_mcp_url":"https://mcp-server.home.arpa/mcp/"}' \
     execute-template <"$pi_mcp")"
-jq -e '.defaultProvider == "openai" and .theme == "system" and (.skills | length == 3)' \
+jq -e '.defaultProvider == "openai" and .theme == "system" and ((.skills | index("~/.pi/agent/skills/grill-me")) != null)' \
     <<<"$rendered_settings" >/dev/null
 jq -e '.mcpServers["homelab-mcp"].url == "https://mcp-server.home.arpa/mcp/" and .mcpServers["homelab-mcp"].exposure == "codemode"' \
     <<<"$rendered_mcp" >/dev/null
