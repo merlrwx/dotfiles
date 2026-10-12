@@ -10,20 +10,29 @@ bashrc="$repo_root/dot_bashrc"
 bash -n "$banner" "$bashrc"
 
 no_color_output="$(NO_COLOR=1 "$banner")"
-grep -Fq '           __..--' <<<"$no_color_output"
-grep -Fq '( ) ) // //' <<<"$no_color_output"
+expected_output="$(cat <<'ART'
+           __..--''``---....___   _..._    __
+ /// //_.-'    .-/";  `        ``<._  ``.''_ `. / // /
+///_.-' _..--.'_    \                    `( ) ) // //
+/ (_..-' // (< _     ;_..__               ; `' / ///
+ / // // //  `-._,_)' // / ``--...____..-' /// / //
+ART
+)"
+[[ "$no_color_output" == "$expected_output" ]]
 [[ "$no_color_output" != *$'\033'* ]]
 [[ "$no_color_output" != *'DOTFILES READY'* ]]
 [[ "$no_color_output" != *'+----------------+'* ]]
 
 dumb_output="$(env -u NO_COLOR TERM=dumb "$banner")"
-grep -Fq '           __..--' <<<"$dumb_output"
-grep -Fq '( ) ) // //' <<<"$dumb_output"
+[[ "$dumb_output" == "$expected_output" ]]
 [[ "$dumb_output" != *$'\033'* ]]
 
 grep -Fq 'dotfiles-banner' "$bashrc"
-grep -Fq 'eyes=' "$banner"
-grep -Fq '"$accent" "$eyes" "$coat"' "$banner"
+grep -Fq "eyes='__'" "$banner"
+grep -Fq '38;2;146;131;116m' "$banner"
+grep -Fq '38;2;216;166;87m' "$banner"
+grep -Fq '38;2;231;138;78m' "$banner"
+grep -Fq 'line=${line//\//"$reset$carpet_color/$reset$cat_color"}' "$banner"
 banner_block="$(sed -n '/# Show the local cat once in each interactive terminal\/session\./,/# Attach after shell configuration and prompt integrations are initialized\./p' "$bashrc")"
 if grep -Eiq 'neofetch|clear|uname|hostname|rpm|dnf|dpkg|flatpak|snap|nvidia-smi|lspci' <<<"$banner_block"; then
     printf 'Interactive banner startup still runs a summary, clear, or system probe.\n' >&2
