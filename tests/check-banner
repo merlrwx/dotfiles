@@ -28,11 +28,15 @@ dumb_output="$(env -u NO_COLOR TERM=dumb "$banner")"
 [[ "$dumb_output" != *$'\033'* ]]
 
 grep -Fq 'dotfiles-banner' "$bashrc"
-grep -Fq "eyes='__'" "$banner"
 grep -Fq '38;2;146;131;116m' "$banner"
 grep -Fq '38;2;216;166;87m' "$banner"
 grep -Fq '38;2;231;138;78m' "$banner"
 grep -Fq 'line=${line//\//"$reset$carpet_color/$reset$cat_color"}' "$banner"
+grep -Fq 'line=${line//@/$cat_slash}' "$banner"
+grep -Fq 'line=${line//\~/$eye_markup}' "$banner"
+grep -Fq "~_'" "$banner"
+grep -Fq '\x27\x27~ \x60.' "$banner"
+grep -Fq '.-@";' "$banner"
 banner_block="$(sed -n '/# Show the local cat once in each interactive terminal\/session\./,/# Attach after shell configuration and prompt integrations are initialized\./p' "$bashrc")"
 if grep -Eiq 'neofetch|clear|uname|hostname|rpm|dnf|dpkg|flatpak|snap|nvidia-smi|lspci' <<<"$banner_block"; then
     printf 'Interactive banner startup still runs a summary, clear, or system probe.\n' >&2

@@ -5,7 +5,6 @@ cat_color=''
 eye_color=''
 carpet_color=''
 reset=''
-eyes='__'
 
 if [[ -t 1 && -n ${TERM:-} && ${TERM:-} != dumb && -z ${NO_COLOR:-} ]]; then
     cat_color=$'\033[38;2;146;131;116m'
@@ -17,16 +16,19 @@ fi
 # Artwork: "Cat" by Unknown, ASCII Art Archive; matching copy from Pastebin.
 # https://www.asciiart.eu/art/85ee0408a922c5b9
 # https://pastebin.com/N1GUfDL4
-line=$'           __..--\x27\x27``---....___   _..._    __'
-printf '%s%s%s%s%s\n' "$cat_color" "${line%$eyes}" "$eye_color" "$eyes" "$reset"
-
-print_carpet_line() {
+print_art_line() {
     local line=$1
+    local eye_markup="${reset}${eye_color}_${reset}${cat_color}"
+    local cat_slash='/'
     line=${line//\//"$reset$carpet_color/$reset$cat_color"}
+    line=${line//@/$cat_slash}
+    line=${line//\~/$eye_markup}
     printf '%s%s%s\n' "$cat_color" "$line" "$reset"
 }
 
-print_carpet_line $' /// //_.-\x27    .-/";  \x60        \x60\x60<._  \x60\x60.\x27\x27_ \x60. / // /'
-print_carpet_line $'///_.-\x27 _..--.\x27_    \x5c                    \x60( ) ) // //'
-print_carpet_line $'/ (_..-\x27 // (< _     ;_..__               ; \x60\x27 / ///'
-print_carpet_line $' / // // //  \x60-._,_)\x27 // / \x60\x60--...____..-\x27 /// / //'
+# `~` marks the vertically stacked eyes; `@` marks the lone slash on the cat.
+print_art_line $'           __..--\x27\x27``---....___   _..._    ~_'
+print_art_line $' /// //_.-\x27    .-@";  \x60        \x60\x60<._  \x60\x60.\x27\x27~ \x60. / // /'
+print_art_line $'///_.-\x27 _..--.\x27_    \x5c                    \x60( ) ) // //'
+print_art_line $'/ (_..-\x27 // (< _     ;_..__               ; \x60\x27 / ///'
+print_art_line $' / // // //  \x60-._,_)\x27 // / \x60\x60--...____..-\x27 /// / //'
