@@ -3,13 +3,11 @@ set -euo pipefail
 
 cat_color=''
 eye_color=''
-carpet_color=''
 reset=''
 
 if [[ -t 1 && -n ${TERM:-} && ${TERM:-} != dumb && -z ${NO_COLOR:-} ]]; then
     cat_color=$'\033[38;2;146;131;116m'
     eye_color=$'\033[38;2;216;166;87m'
-    carpet_color=$'\033[38;2;231;138;78m'
     reset=$'\033[0m'
 fi
 
@@ -20,14 +18,7 @@ print_cat_line() {
     printf '%s%s%s\n' "$cat_color" "$line" "$reset"
 }
 
-# A more detailed take on the original cat; the @ markers are its eyes.
-print_cat_line '          /\_/\'
-print_cat_line '         /     \'
-print_cat_line '    ____/  @.@  \____'
-print_cat_line '   /      \ ^ /      \'
-print_cat_line '  <        \_/        >'
-print_cat_line '   \    ___   ___    /'
-print_cat_line '    \__/   \_/   \__/'
-print_cat_line '       /|     |\'
-print_cat_line '      (_|_____|_)'
-printf '%s%s%s\n' "$carpet_color" '   ///////////////////////' "$reset"
+# The @ markers are the two eyes.
+print_cat_line ' /\_/\'
+print_cat_line '( @.@ )'
+print_cat_line ' > ^ <'

@@ -11,16 +11,9 @@ bash -n "$banner" "$bashrc"
 
 no_color_output="$(NO_COLOR=1 "$banner")"
 expected_output="$(cat <<'ART'
-          /\_/\
-         /     \
-    ____/  o.o  \____
-   /      \ ^ /      \
-  <        \_/        >
-   \    ___   ___    /
-    \__/   \_/   \__/
-       /|     |\
-      (_|_____|_)
-   ///////////////////////
+ /\_/\
+( o.o )
+ > ^ <
 ART
 )"
 [[ "$no_color_output" == "$expected_output" ]]
@@ -35,11 +28,9 @@ dumb_output="$(env -u NO_COLOR TERM=dumb "$banner")"
 grep -Fq 'dotfiles-banner' "$bashrc"
 grep -Fq '38;2;146;131;116m' "$banner"
 grep -Fq '38;2;216;166;87m' "$banner"
-grep -Fq '38;2;231;138;78m' "$banner"
 grep -Fq 'line=${line//@/"$eye_markup"}' "$banner"
 grep -Fq 'local eye_markup="${reset}${eye_color}o${reset}${cat_color}"' "$banner"
-grep -Fq '    ____/  @.@  \____' "$banner"
-grep -Fq '"$carpet_color"' "$banner"
+grep -Fq "print_cat_line '( @.@ )'" "$banner"
 banner_block="$(sed -n '/# Show the local cat once in each interactive terminal\/session\./,/# Attach after shell configuration and prompt integrations are initialized\./p' "$bashrc")"
 if grep -Eiq 'neofetch|clear|uname|hostname|rpm|dnf|dpkg|flatpak|snap|nvidia-smi|lspci' <<<"$banner_block"; then
     printf 'Interactive banner startup still runs a summary, clear, or system probe.\n' >&2
