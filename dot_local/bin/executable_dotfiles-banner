@@ -3,18 +3,19 @@ set -euo pipefail
 
 coat=''
 accent=''
-status=''
 reset=''
+eyes='( )'
 
 if [[ -t 1 && -n ${TERM:-} && ${TERM:-} != dumb && -z ${NO_COLOR:-} ]]; then
     coat=$'\033[90m'
     accent=$'\033[33m'
-    status=$'\033[32m'
     reset=$'\033[0m'
 fi
 
-printf '%s%s%s%s%s\n' "$coat" '       /\_/\    ' "$status" '+----------------+' "$reset"
-printf '%s%s%s%s%s%s%s%s%s\n' "$coat" '      ( ' "$accent" 'o.o' "$coat" ' )   ' "$status" '| DOTFILES READY |' "$reset"
-printf '%s%s%s%s%s\n' "$coat" '       > ^ <    ' "$status" '+----------------+' "$reset"
-printf '%s%s%s\n' "$coat" '      /|   |\' "$reset"
-printf '%s%s%s\n' "$coat" '     (_|___|_)' "$reset"
+# Artwork: "Cat" by Unknown, ASCII Art Archive.
+# https://www.asciiart.eu/art/85ee0408a922c5b9
+printf '%s%s%s\n' "$coat" $'           __..--\x27\x27``---....___   _..._    __' "$reset"
+printf '%s%s%s\n' "$coat" $' /// //_.-\x27    .-/";  \x60        \x60\x60<._  \x60\x60.\x27\x27_ \x60. / // /' "$reset"
+printf '%s%s%s%s%s%s%s\n' "$coat" $'///_.-\x27 _..--.\x27_    \x5c                    \x60' "$accent" "$eyes" "$coat" ' ) // //' "$reset"
+printf '%s%s%s\n' "$coat" $'/ (_..-\x27 // (< _     ;_..__               ; \x60\x27 / ///' "$reset"
+printf '%s%s%s\n' "$coat" $' / // // //  \x60-._,_)\x27 // / \x60\x60--...____..-\x27 /// / //' "$reset"
