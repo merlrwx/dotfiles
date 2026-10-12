@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+banner="$repo_root/dot_local/bin/executable_dotfiles-banner"
+bashrc="$repo_root/dot_bashrc"
+
+[[ -x "$banner" ]]
+bash -n "$banner" "$bashrc"
+
+no_color_output="$(NO_COLOR=1 "$banner")"
+[[ "$no_color_output" == *READY* ]]
+[[ "$no_color_output" == *"/\_"* ]]
+[[ "$no_color_output" != *$'\033'* ]]
+
+dumb_output="$(env -u NO_COLOR TERM=dumb "$banner")"
+[[ "$dumb_output" == *READY* ]]
+[[ "$dumb_output" == *"/\_"* ]]
+[[ "$dumb_output" != *$'\033'* ]]
+
+grep -Fq 'dotfiles-banner' "$bashrc"
+banner_block="$(sed -n '/# Show the local cat once in each interactive terminal\/session\./,/# Attach after shell configuration and prompt integrations are initialized\./p' "$bashrc")"
+if grep -Eiq 'neofetch|clear|uname|hostname|rpm|dnf|dpkg|flatpak|snap|nvidia-smi|lspci' <<<"$banner_block"; then
+    printf 'Interactive banner startup still runs a summary, clear, or system probe.\n' >&2
+    exit 1
+fi
+
+[[ ! -e "$repo_root/.chezmoiexternals/neofetch.toml" ]]
+[[ ! -e "$repo_root/dot_config/neofetch" ]]
+
+printf 'Local banner checks passed.\n'

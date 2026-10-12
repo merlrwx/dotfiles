@@ -207,17 +207,17 @@ if [[ -f "$HOME/.cargo/env" ]]; then
     . "$HOME/.cargo/env"
 fi
 
-# Show the cat and system summary once in each interactive terminal/session.
-if command -v neofetch >/dev/null 2>&1 && [[ -t 1 ]]; then
-    if [[ -z ${TMUX-} ]]; then
-        command -v clear >/dev/null 2>&1 && clear
-        neofetch
-    elif command -v tmux >/dev/null 2>&1 &&
-        [[ -z $(tmux show-option -qv @dotfiles_neofetch_shown 2>/dev/null) ]]; then
-        tmux set-option -q @dotfiles_neofetch_shown 1 2>/dev/null && {
-            command -v clear >/dev/null 2>&1 && clear
-            neofetch
-        }
+# Show the local cat once in each interactive terminal/session.
+if [[ -t 1 ]] && command -v dotfiles-banner >/dev/null 2>&1; then
+    if [[ -n ${TMUX-} ]]; then
+        if command -v tmux >/dev/null 2>&1 &&
+            [[ -z $(tmux show-option -qv @dotfiles_banner_shown 2>/dev/null) ]] &&
+            tmux set-option -q @dotfiles_banner_shown 1 2>/dev/null; then
+            dotfiles-banner
+        fi
+    elif [[ -z ${DOTFILES_BANNER_SHOWN-} ]]; then
+        export DOTFILES_BANNER_SHOWN=1
+        dotfiles-banner
     fi
 fi
 

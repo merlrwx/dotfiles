@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+coat=''
+accent=''
+status=''
+reset=''
+
+if [[ -t 1 && -n ${TERM:-} && ${TERM:-} != dumb && -z ${NO_COLOR:-} ]]; then
+    coat=$'\033[90m'
+    accent=$'\033[33m'
+    status=$'\033[32m'
+    reset=$'\033[0m'
+fi
+
+printf '%s%s%s%s%s\n' "$coat" '       /\_/\    ' "$status" '+----------------+' "$reset"
+printf '%s%s%s%s%s%s%s%s%s\n' "$coat" '      ( ' "$accent" 'o.o' "$coat" ' )   ' "$status" '| DOTFILES READY |' "$reset"
+printf '%s%s%s%s%s\n' "$coat" '       > ^ <    ' "$status" '+----------------+' "$reset"
+printf '%s%s%s\n' "$coat" '      /|   |\' "$reset"
+printf '%s%s%s\n' "$coat" '     (_|___|_)' "$reset"

@@ -22,12 +22,10 @@ shared_paths=(
     .config/mise/mise.lock
     .config/bash/aliases
     .config/bash/completions/init
-    .local/bin/neofetch
+    .local/bin/dotfiles-banner
     .local/bin/agent-worker
     .local/share/blesh/ble.sh
     .config/blesh/init.sh
-    .config/neofetch/cat
-    .config/neofetch/config.conf
     .config/starship.toml
     .config/nvim/init.lua
     .config/nvim/lua/config/clipboard.lua

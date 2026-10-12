@@ -282,10 +282,15 @@ and Mise completions are loaded there when those tools are installed. Add
 wrappers there when runtime candidates are missing.
 At an idle prompt, Ctrl+C cancels the current line in both vi editing modes. The
 `k` alias retains kubectl completion, Fabric pattern aliases are generated from
-installed pattern names, and `yt` requests a video transcript. Neofetch shows a
-colored cat once at interactive terminal startup (once per tmux session).
-Tmux uses the matching status colors and enables terminal clipboard forwarding
-where the client supports it; detach with the usual `Ctrl-b`, then `d`.
+installed pattern names, and `yt` requests a video transcript. At interactive
+Bash startup, a lightweight cat-only banner appears once per tmux session. It
+does not display a system summary or gather system information. Color falls
+back to plain text when `NO_COLOR` is set or the terminal does not support
+color. The banner works in Bash terminals on Fedora and RHEL-family Linux, and
+on Windows through WSL or Git Bash; this describes banner support and does not
+claim full native Windows dotfiles provisioning. Tmux uses the matching status
+colors and enables terminal clipboard forwarding where the client supports it;
+detach with the usual `Ctrl-b`, then `d`.
 
 ## Plan a complex change
 
