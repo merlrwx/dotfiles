@@ -1,151 +1,68 @@
 ---
 name: parallel-work
-description: Coordinate explicitly requested parallel, delegated, or multi-agent coding work through Herdr and Git. Use when the user asks to delegate, split work into agents, parallelize tasks, run independent workers, coordinate phases, or convene a bounded review. Do not activate for ordinary single-agent coding.
+description: Coordinate explicitly requested parallel or delegated coding and bounded reviews through Herdr and Git, including organization goals spanning repositories. Do not activate for ordinary single-agent work.
 ---
 
 # Parallel work
 
-Use this skill only after the user asks for delegation or parallel work. Keep
-ordinary coding single-agent. Herdr owns visible processes, Git owns worktree
-isolation, and `agent-goal` owns each autonomous worker's verifier loop.
+Require `HERDR_ENV=1` before Herdr control and read its installed `herdr` skill.
+Inspect instructions, Git status and existing run state. Preserve unrelated
+sessions and work. Delegate only when the user explicitly asks; workers must not
+delegate recursively or adopt sibling goals.
 
-Before controlling Herdr, confirm the coordinator is in a Herdr pane:
-
-```bash
-test "${HERDR_ENV:-}" = 1
-```
-
-If this fails, do not inspect or control a Herdr session from outside it. Ask
-the user to continue from a Herdr-managed pane. Read the installed `herdr` skill
-for command details. Prefer explicit IDs returned by Herdr and `--no-focus` for
-background workers.
-
-## Choose a mode
+## Choose the mode
 
 ### Interactive parallel
 
-Use for small, short tasks that the user wants to supervise live.
-
-- Start with two workers; use at most three.
-- Shared-checkout work is allowed only when the user explicitly chooses it.
-- Before using a shared checkout, require no active `.agent/ACTIVE` goal and
-  assign non-overlapping file ownership. If ownership overlaps, serialize or
-  use isolated worktrees.
-- Split a sibling pane, start a named Codex or Pi agent, and send a narrow task
-  prompt. Do not create a worktree unless requested.
-- Workers inspect Git status and stage only files in their scope. Do not stage,
-  reset, restore, or clean another worker's files. Do not auto-commit.
+For short supervised tasks, prefer two workers and cap at three. Shared checkout
+edits require the user's explicit choice, non-overlapping ownership, and no
+active autonomous goal. Otherwise use isolated worktrees. Preserve user focus.
 
 ### Isolated autonomous
 
-Use for multi-phase plans, longer work, or whenever workers need independent
-verification. This is the default mode for delegated implementation.
+Use for substantial delegated implementation. The coordinator owns the overall
+outcome, task graph, integration and publishing. Each worker owns one goal in one
+worktree. Select independent tasks and clear verification before launch.
 
-1. Read the plan and repository instructions. Split it into small tasks with
-   observable acceptance criteria and file ownership hints.
-2. Draw task dependencies before launching anything. Mark uncertain edges and
-   ask the user to confirm them before they affect parallel execution.
-3. Prefer two ready workers initially and cap the run at three. Launch only
-   tasks whose dependencies have been integrated and verified.
-4. Prepare a complete task contract for each worker. Save it under a
-   coordinator-local path such as `.agent/parallel/<run-id>/<task>.md`. Include
-   outcome, acceptance criteria, scope, verification, invariants, and Git
-   authority. Keep push, PR, and deployment authority absent unless the user
-   explicitly grants each one.
-5. Use one task ID for the Herdr name and branch suffix. IDs must match
-   `[a-z][a-z0-9_-]{0,31}`. Use a common run ID matching
-   `[a-z][a-z0-9_-]{0,47}`.
-6. Launch each ready task from a clean integration commit:
+For an organization parent, run `agent-worker discover PARENT`, select the repos
+in scope, and deduplicate by Git common-directory identity. Keep contracts and
+the plan under `~/.local/state/agent-runs/<run>/`; the parent does not need Git or
+`.agent`. Never create sibling worktree directories beside source repositories.
 
-   ```bash
-   agent-worker spawn \
-     --repo "$PWD" \
-     --run-id feature-upgrade \
-     --name phase-01 \
-     --goal .agent/parallel/feature-upgrade/phase-01.md \
-     --kind codex \
-     --base HEAD
-   ```
+Record outcome, acceptance criteria, scope, invariants, verification and existing
+Git authority in each contract. Keep pushes, PRs and deployments with the
+coordinator; workers may commit only when their contract allows it. Permission
+profiles control tool access, not publishing authority.
 
-   Add one `--depends-on task-id` for each prerequisite. Pass `--verify PATH`
-   for a task-specific verifier; a coordinator-local or external verifier is
-   copied into that worker's `.agent/VERIFY` before activation. The helper
-   refuses unmet dependencies, dirty source checkouts, duplicate branches or worktrees,
-   invalid goal contracts, and more than three active autonomous workers. Use
-   `--kind pi` to select Pi. Do not run Codex and Pi in one active-goal worktree.
-7. Record the returned workspace, root pane, branch, base commit, and task ID in
-   the run manifest. Inspect progress with:
+Use `agent-worker plan --run-id RUN --file PLAN.json` to queue multiple tasks,
+then `agent-worker launch --run-id RUN --jobs 2` to start ready work, capped at
+three. Use `agent-worker spawn --repo REPO --run-id RUN --name TASK --goal FILE
+--verify PATH --permission-profile full-access` for one task. Select the recorded
+profile deliberately; do not assume parent permissions are inherited. Read the
+CLI help for supported profiles and runtimes. Herdr configuration controls the
+central root; resource names and paths include repository, run and task identity.
 
-   ```bash
-   agent-worker status --run-id feature-upgrade
-   agent-worker inspect phase-01 --run-id feature-upgrade
-   ```
+Inspect with `agent-worker status` and `agent-worker inspect`. Herdr's terminal
+status alone does not prove verification. After completion, `collect` rechecks
+the goal and saves a patch. Review/apply it in the appropriate integration
+checkout, run combined checks, and create an authorized integration commit.
+Then use `agent-worker integrated TASK --run-id RUN --at HEAD --checkout REPO
+--verify PATH`. Integration validates the collected digest and patch contents.
 
-   Herdr `done` is a terminal state only. A worker is ready to collect only
-   after its own `.agent/COMPLETE` exists and `.agent/ACTIVE` is gone; that
-   marker is written after the fixed verifier passes.
-8. Collect one verified task at a time. Review its summary and patch path:
+Same-repository prerequisites must be ancestors of the dependent's base.
+Cross-repository prerequisites require verified integration and explicit
+artifact/version assertions in the dependent's contract where applicable.
+Launch the next ready batch after recording integration. Do not silently reuse
+a stale base or turn missing commit authority into an unapproved commit.
 
-   ```bash
-   agent-worker collect phase-01 --run-id feature-upgrade
-   ```
-
-   Apply the saved patch in a separate integration worktree or branch. Inspect
-   ownership and the full diff, resolve conflicts in the coordinator, and run
-   the combined repository verification. Stop and report substantive design
-   conflicts instead of letting workers take over sibling tasks.
-9. After combined verification, record integration at the commit containing
-   the collected patch:
-
-   ```bash
-   agent-worker integrated phase-01 --run-id feature-upgrade --at HEAD \
-     --checkout "$PWD" --verify scripts/verify
-   ```
-
-   The helper checks that the task verifier completed, the integration commit
-   descends from the recorded base, and the collected patch is present there.
-   Dependent tasks must use that integration commit as `--base`; the helper
-   checks that each dependency is integrated and included in the base.
-10. Start newly ready tasks and repeat. Keep integration commits local and
-    create them only when the user's task contract authorizes commits. A
-    dependent autonomous worker needs a commit representing the verified
-    integration. If that authority is absent, stop before launching dependent
-    work and ask the user to authorize the local integration commit or choose a
-    serial workflow.
-11. Clean up only after integration. `agent-worker cleanup` refuses dirty
-    worktrees and never force-removes them. Keep the run manifest and branches
-    as recovery evidence.
-
-Each task owns only its own `.agent/GOAL.md` and active goal in its worktree.
-The prompt must tell the worker not to discover or adopt sibling goals and not
-to delegate recursively. Each active goal has one root implementation agent.
+Use `retry`/`resume` for recorded workers so their policy and identity are checked.
+After a timeout, inspect before retrying; never send duplicate prompts blindly.
+Use `cleanup` after integration. Preserve late changes, ignored files, goal logs
+and recovery state; do not bypass a refusal with manual force removal.
 
 ## Deliberation
 
-Use only when the user asks for research, alternatives, or independent review
-before implementation.
-
-- Launch two or three named, read-only agents with distinct questions or
-  evaluation angles.
-- Ask each for evidence, assumptions, risks, and a recommendation in a short
-  structured response. Tell them not to edit files, run implementation, or
-  start other agents.
-- Collect results with Herdr, then synthesize one decision in the coordinator.
-  Do not run an open-ended agent-to-agent discussion.
-- Record a meaningful decision or rejected alternative in project docs when
-  the task calls for it. Start implementation only after the decision is made.
-
-## Recovery and Git boundaries
-
-- Use the manifest under `~/.local/state/agent-runs/` after coordinator
-  interruption. Re-check Herdr, each worktree, `.agent/PROGRESS.md`, and
-  `.agent/ACTIVE` before retrying a command.
-- Do not infer that a timed-out prompt was not delivered. Inspect the target
-  before resending.
-- Do not reuse a branch, task name, or worktree from a prior run. Do not delete
-  dirty worktrees or discard unrelated changes.
-- Workers must inspect `git status` before staging or committing and stage only
-  task-owned paths. Pushes, PRs, and deployments always require separate user
-  authority.
-- Use a reviewer only for significant or sensitive changes, not every small
-  task.
+For a requested review, use two or three visible read-only agents with distinct
+questions. No implementation goals or worktrees are needed for read-only work.
+Gather evidence and recommendations in a bounded round, then close only the
+panes you created. Implement only if the user has already requested it.

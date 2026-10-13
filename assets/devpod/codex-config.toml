@@ -1,2 +1,5 @@
 [tui]
 theme = "gruvbox-material-hard"
+
+[features]
+goals = true

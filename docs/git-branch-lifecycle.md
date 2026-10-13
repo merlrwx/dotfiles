@@ -61,7 +61,7 @@ git -C /path/to/worktree status --short --branch
 
 A local branch checked out in a worktree cannot be deleted until that worktree is detached, switched, or removed. The worktree cleanup command refuses to remove uncommitted changes by default. Preserve or integrate dirty and untracked files before cleanup; do not force removal just to clear a branch name.
 
-For delegated work, first verify and integrate the worker's patch into the coordinator branch. Keep the worker checkout while it contains changes that have not been collected or committed. Once it is clean and no longer needed, remove the worktree, then delete its local branch.
+For delegated work, first verify and integrate the worker's patch into the coordinator branch. Use `agent-worker cleanup` for managed workers: it verifies the exact integrated patch and preserves a recovery archive before removal, including uncommitted and ignored files. Late changes cause a refusal. Branches and manifests remain available; archive paths are reported. Do not bypass this with manual force removal. See [parallel work](parallel-work.md) for recovery and central worktree placement.
 
 ## Practical rule
 

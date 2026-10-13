@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Merge managed skill paths while preserving local Pi preferences."""
+import json
+from pathlib import Path
+import sys
+
+settings = json.loads(sys.stdin.read() or "{}")
+for key, value in {"defaultProvider": "openai", "theme": "system", "shellPath": "/bin/bash"}.items():
+    settings.setdefault(key, value)
+
+managed = [
+    "~/.codex/skills/autonomous-goal",
+    "~/.codex/skills/parallel-work",
+    "~/.codex/skills/project-scaffold",
+    "~/.pi/agent/skills/herdr",
+    "~/.pi/agent/skills/grill-me",
+]
+skills = settings.get("skills", [])
+if not isinstance(skills, list) or not all(isinstance(path, str) for path in skills):
+    raise SystemExit("Pi skills must be a list of paths; settings were not changed")
+
+def retired(path):
+    expanded = str(Path(path).expanduser())
+    return (
+        "/.codex/plugins/cache/" in expanded and "/engineering-suite-grill-me/" in expanded
+        or expanded == str(Path.home() / ".agents/skills/grill-me")
+    )
+
+managed_paths = {str(Path(path).expanduser()) for path in managed}
+settings["skills"] = managed + [
+    path for path in skills
+    if str(Path(path).expanduser()) not in managed_paths and not retired(path)
+]
+print(json.dumps(settings, indent=2))

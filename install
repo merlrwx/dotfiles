@@ -102,7 +102,18 @@ done
 while IFS= read -r -d '' skill_file; do
     relative_path="${skill_file#"$dotfiles_root/dot_codex/skills/"}"
     install -Dm0644 "$skill_file" "$HOME/.codex/skills/$relative_path"
+    install -Dm0644 "$skill_file" "$HOME/.pi/agent/skills/$relative_path"
 done < <(find "$dotfiles_root/dot_codex/skills" -type f -print0)
+
+# Keep the portable goal core and Pi adapter available with the installed skills.
+for tool in agent-goal agent-worker; do
+    install -Dm0755 "$dotfiles_root/dot_local/bin/executable_$tool" \
+        "$HOME/.local/bin/$tool"
+done
+install -Dm0644 "$dotfiles_root/dot_pi/agent/extensions/autonomous-goal.ts" \
+    "$HOME/.pi/agent/extensions/autonomous-goal.ts"
+install -Dm0644 "$dotfiles_root/dot_pi/agent/skills/grill-me/SKILL.md" \
+    "$HOME/.pi/agent/skills/grill-me/SKILL.md"
 
 # ~~~~~~~~~~~~~~~ Codex and Pi workspace setup ~~~~~~~~~~~~~~~~~~~~~~~~
 

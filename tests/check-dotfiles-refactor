@@ -7,6 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 python3 - "$repo_root" <<'PY'
 from pathlib import Path
 import json
+import subprocess
 import tomllib
 import sys
 
@@ -110,7 +111,10 @@ assert "Flux" in selection_rules.read_text()
 shared_instructions = (root / "dot_config/agents/AGENTS.md").read_text()
 assert "project-scaffold" in shared_instructions
 
-pi_settings = json.loads((root / "dot_pi/agent/settings.json.tmpl").read_text())
+pi_settings = json.loads(subprocess.run(
+    ["python3", str(root / "dot_pi/agent/modify_settings.json.tmpl")],
+    input="{}", text=True, capture_output=True, check=True,
+).stdout)
 assert "~/.codex/skills/project-scaffold" in pi_settings["skills"]
 PY
 

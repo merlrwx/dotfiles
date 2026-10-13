@@ -12,7 +12,7 @@ for expected in \
     'devpod ssh "$task" --workdir "/workspaces/$project"' \
     '--id "$task"' \
     'devpod ssh "$task"' \
-    'git worktree add ".agent-worktrees/$task"' \
+    'git worktree add "$worktree"' \
     'codex login --device-auth' \
     'parallel-work' \
     'agent-worker' \
@@ -54,10 +54,9 @@ with TemporaryDirectory(prefix="devpod-worker-worktrees-") as temp_dir:
         git_dir = root / git_dir
     exclude = git_dir / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
-    exclude.write_text("/.agent-worktrees/\n")
 
-    first = root / ".agent-worktrees" / "task-a"
-    second = root / ".agent-worktrees" / "task-b"
+    first = Path(temp_dir) / "home/.herdr/worktrees/project/run/task-a"
+    second = Path(temp_dir) / "home/.herdr/worktrees/project/run/task-b"
     git("worktree", "add", "-q", "-b", "agent/task-a", str(first), "HEAD")
     git("worktree", "add", "-q", "-b", "agent/task-b", str(second), "HEAD")
     (first / "source.txt").write_text("task a\n")

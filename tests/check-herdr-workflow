@@ -34,7 +34,7 @@ bashrc = (repo / "dot_bashrc").read_text()
 match = re.search(r"(?ms)^codex\(\) \{(.*?)^\}", bashrc)
 assert match, "Codex shell wrapper is missing"
 wrapper = match.group(1)
-assert '"${1:-}" == "resume"' in wrapper and "--yolo" in wrapper
+assert "--yolo" not in wrapper, "general resume must not escalate permissions"
 assert 'command codex --no-daemon "$@"' in wrapper
 
 with TemporaryDirectory(prefix="codex-resume-wrapper-") as directory:
@@ -52,6 +52,7 @@ with TemporaryDirectory(prefix="codex-resume-wrapper-") as directory:
         f"codex() {{{wrapper}\n}}\n"
         "codex resume session-123\n"
         "codex resume session-456 --yolo\n"
+        "codex resume session-789 --sandbox read-only --ask-for-approval on-request\n"
         "codex mcp list\n"
         "codex\n"
     )
@@ -59,8 +60,9 @@ with TemporaryDirectory(prefix="codex-resume-wrapper-") as directory:
     env.update({"PATH": f"{bindir}:/usr/bin:/bin", "CODEX_CALLS": str(calls)})
     subprocess.run(["bash", str(harness)], env=env, check=True, capture_output=True)
     assert calls.read_text().splitlines() == [
-        "--no-daemon resume session-123 --yolo",
+        "--no-daemon resume session-123",
         "--no-daemon resume session-456 --yolo",
+        "--no-daemon resume session-789 --sandbox read-only --ask-for-approval on-request",
         "mcp list",
         "--no-daemon",
     ]
@@ -79,7 +81,24 @@ for expected in (
 ):
     assert expected.lower() in skill.lower(), expected
 
-settings = json.loads((repo / "dot_pi/agent/settings.json.tmpl").read_text())
+settings_script = repo / "dot_pi/agent/modify_settings.json.tmpl"
+original_settings = {
+    "defaultProvider": "anthropic", "defaultModel": "local-choice", "custom": {"keep": True},
+    "skills": ["~/custom-skill", "~/.codex/plugins/cache/openai-curated-remote/engineering-suite-grill-me/2.0.0/skills/grill-me"],
+}
+def merge_settings(value):
+    return json.loads(subprocess.run(
+        ["python3", str(settings_script)], input=json.dumps(value), text=True,
+        capture_output=True, check=True,
+    ).stdout)
+settings = merge_settings(original_settings)
+assert settings["defaultProvider"] == "anthropic" and settings["defaultModel"] == "local-choice"
+assert settings["custom"] == {"keep": True} and "~/custom-skill" in settings["skills"]
+assert not any("/plugins/cache/" in path for path in settings["skills"])
+assert merge_settings(settings) == settings, "settings merge must be idempotent"
+assert "~/.codex/skills/parallel-work" in settings["skills"]
+grill = (repo / "dot_pi/agent/skills/grill-me/SKILL.md").read_text()
+assert "default to grilling with docs" in grill and "CONTEXT.md" in grill
 assert "~/.pi/agent/skills/herdr" in settings["skills"]
 assert (repo / "dot_codex/skills/parallel-work/SKILL.md").is_file()
 herdr_skill_installer = repo / ".chezmoiscripts/run_after_install_herdr_skill"
