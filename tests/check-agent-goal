@@ -69,3 +69,207 @@ python3 -c 'import json,sys; assert "systemMessage" in json.load(sys.stdin)' <<<
 (cd "$test_root" && "$agent_goal" clear --force)
 
 printf 'agent-goal checks passed.\n'
+
+python3 - "$agent_goal" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+cli = sys.argv[1]
+
+with tempfile.TemporaryDirectory(prefix="agent-goal-regressions-") as temporary:
+    root = Path(temporary)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    state = root / ".agent"
+    state.mkdir()
+    goal = state / "GOAL.md"
+    verifier = root / "verify"
+    helper = root / "helper"
+    active = state / "ACTIVE"
+    complete = state / "COMPLETE"
+
+    def run(*args, ok=True):
+        result = subprocess.run([cli, *args], cwd=root, text=True, capture_output=True)
+        assert (result.returncode == 0) == ok, (args, result.stdout, result.stderr)
+        return result
+
+    def status(expected):
+        data = json.loads(run("status", "--json").stdout)
+        assert data["status"] == expected, data
+        assert data["continue"] is (expected == "active"), data
+        assert "verifier" in data and "verifier_sha256" in data
+        if expected == "invalid":
+            assert data["error"]
+        return data
+
+    def reset(script="#!/bin/sh\nexit 0\n", *options):
+        for path in state.iterdir():
+            path.unlink()
+        goal.write_text("Test goal\n")
+        verifier.unlink(missing_ok=True)
+        verifier.write_text(script)
+        verifier.chmod(0o755)
+        helper.write_text("helper\n")
+        run("start", "--allow-dirty", "--verify", "verify", *options)
+        return active.read_text()
+
+    def hook(repeated=False):
+        result = subprocess.run([cli, "hook-stop"], cwd=root, text=True, capture_output=True,
+                                input=json.dumps({"cwd": str(root), "stop_hook_active": repeated}))
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
+
+    for owner in ("native", "pi", "hook"):
+        reset("#!/bin/sh\nexit 0\n", "--continuation", owner)
+        assert status("active")["continuation"] == owner
+        assert (hook().get("decision") == "block") is (owner == "hook")
+        assert hook(True) == {}
+
+    original = reset()
+    for malformed in ("", "[]", "null", "{bad", '{"version":true}',
+                      json.dumps({**json.loads(original), "verifier_sha256": "bad"}),
+                      json.dumps({**json.loads(original), "verify_inputs": [None]})):
+        active.write_text(malformed)
+        status("invalid")
+        assert "systemMessage" in hook()
+        run("complete", ok=False)
+    active.write_text(original)
+
+    nested = root / "nested"
+    nested.mkdir()
+    nested_status = subprocess.run([cli, "status", "--json"], cwd=nested,
+                                   text=True, capture_output=True, check=True)
+    assert json.loads(nested_status.stdout)["status"] == "active"
+    for malformed in ('{}', '[]', 'null', '{"version":2,"active":null}'):
+        complete.write_text(malformed)
+        status("invalid")
+        assert "systemMessage" in hook(True)
+    complete.unlink()
+    complete.mkdir()
+    status("invalid")
+    complete.rmdir()
+
+    for marker in ("COMPLETE", "PAUSE", "BLOCKED.md"):
+        path = state / marker
+        path.write_text("")
+        status("invalid")
+        run("complete", ok=False)
+        path.unlink()
+    complete.write_text("completed_at: yesterday\nverifier: verify\n")
+    status("invalid")
+    active.unlink()
+    status("invalid")  # Legacy COMPLETE is not a verified receipt.
+    reset()
+    run("pause", "--force")
+    status("paused")
+    run("block", "--reason", "x", "--evidence", "x", "--attempted", "x", "--unblock", "x", ok=False)
+    (state / "BLOCKED.md").write_text("Blocked\n")
+    status("invalid")
+    run("resume", ok=False)
+    reset()
+    (state / "PAUSE").write_text("Paused\n")
+    active.unlink()
+    status("invalid")
+
+    for mutation in ("hash", "mode", "goal", "symlink", "escape"):
+        record = json.loads(reset())
+        if mutation == "hash":
+            verifier.write_text("#!/bin/sh\nexit 1\n")
+        elif mutation == "mode":
+            verifier.chmod(0o644)
+        elif mutation == "goal":
+            goal.write_text("Changed goal\n")
+        elif mutation == "symlink":
+            verifier.unlink()
+            verifier.symlink_to(helper)
+        else:
+            record["verifier"] = "../outside"
+            active.write_text(json.dumps(record))
+        status("invalid")
+        run("complete", ok=False)
+
+    for change in ("printf changed >> helper", "chmod 600 helper", "rm helper"):
+        reset(f"#!/bin/sh\n{change}\n", "--verify-input", "helper")
+        status("active")
+        run("complete", ok=False)
+        assert not complete.exists()
+    reset("#!/bin/sh\nexit 0\n", "--verify-input", "helper", "--verify-input", "verify")
+    helper.write_text("tampered before verification\n")
+    status("invalid")
+    run("complete", ok=False)
+    reset("#!/bin/sh\nprintf changed >> verify\n")
+    run("complete", ok=False)
+    assert not complete.exists()
+    reset("#!/bin/sh\nprintf changed >> .agent/GOAL.md\n")
+    run("complete", ok=False)
+
+    for legacy in (False, True):
+        record = json.loads(reset())
+        if legacy:
+            record = {key: record[key] for key in ("verifier", "verifier_sha256", "started_at")}
+            record["version"] = 1
+            active.write_text(json.dumps(record))
+        status("active")
+        run("complete")
+        status("complete")
+        receipt = complete.read_text()
+        active.write_text(json.dumps(record))  # Simulate interrupted ACTIVE removal.
+        status("complete")
+        assert hook() == {}
+        run("complete")
+        assert not active.exists()
+        assert complete.read_text() == receipt
+        other = {**record, "started_at": "different goal"}
+        active.write_text(json.dumps(other))
+        status("invalid")
+        run("complete", ok=False)
+        active.unlink()
+        (state / "PAUSE").write_text("Paused\n")
+        status("invalid")
+        (state / "PAUSE").unlink()
+        corrupted = json.loads(receipt)
+        corrupted["goal_sha256"] = "0" * 64
+        complete.write_text(json.dumps(corrupted))
+        status("invalid")
+        complete.write_text(receipt)
+        verifier.chmod(0o700)
+        status("invalid")
+
+    reset("#!/bin/sh\nexit 0\n", "--verify-input", "helper")
+    run("complete")
+    status("complete")
+    helper.write_text("changed after completion\n")
+    status("invalid")
+    run("complete", ok=False)
+
+    reset("#!/bin/sh\nexit 3\n")
+    run("complete", ok=False)
+    status("active")
+    assert not complete.exists()
+    reset()
+    active.unlink()
+    active.symlink_to(helper)
+    status("invalid")
+    reset()
+    run("clear", "--force")
+    status("inactive")
+    state.mkdir(exist_ok=True)
+    goal.write_text("Goal\n")
+    helper.unlink(missing_ok=True)
+    helper.symlink_to(verifier)
+    run("start", "--allow-dirty", "--verify", "verify", "--verify-input", "helper", ok=False)
+    helper.unlink()
+    # State directory escape must be rejected before writes.
+    goal.unlink()
+    state.rmdir()
+    with tempfile.TemporaryDirectory() as outside:
+        state.symlink_to(outside, target_is_directory=True)
+        status("invalid")
+        run("start", "--allow-dirty", "--verify", "verify", ok=False)
+        run("clear", "--force", ok=False)
+        assert not list(Path(outside).iterdir())
+
+print("agent-goal lifecycle regressions passed.")
+PY
