@@ -1,6 +1,6 @@
 ---
 name: autonomous-goal
-description: Prepare, execute, or resume a persistent verified goal. Use when the user invokes autonomous-goal or asks to keep working to a concrete outcome. Supports repository work and explicitly delegated organization goals; ordinary interactive tasks do not need goal state.
+description: Prepare, execute, or resume a persistent verified goal. Use when the user invokes autonomous-goal or asks to keep working to a concrete outcome. Supports repository work and organization goals; ordinary interactive tasks do not need goal state.
 ---
 
 # Autonomous goal
@@ -49,7 +49,9 @@ implementation agents need their own worktrees under the configured central root
 ## Organization goals
 
 A parent directory need not be a Git repository. Keep the coordinator's native
-goal there, and use `parallel-work` when delegation is explicitly authorized.
+goal there. The user's standing preference authorizes bounded per-repository
+delegation for autonomous implementation across multiple selected repositories;
+use `parallel-work` without requiring the user to repeat that choice.
 Discover/select repositories, keep contracts beside the run manifest under
 `~/.local/state/agent-runs/`, and assign one local goal per worker worktree.
 Do not initialize a parent Git repository or add sibling folders just to hold

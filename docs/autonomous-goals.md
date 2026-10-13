@@ -103,8 +103,10 @@ local and is never copied between harnesses.
 Start the coordinator in the parent directory using a native goal. Select child
 repositories and keep the run manifest/contracts under the agent state directory.
 The parent does not need to be turned into a Git repository. Each implementation
-worker receives its own local contract and worktree. See the multi-repository
-example in [parallel work](parallel-work.md).
+worker receives its own local contract and worktree. This setup records the user's
+standing request to delegate these multi-repository autonomous implementation
+goals, so the user need not repeat a parallel-work permission each time. See the
+multi-repository example in [parallel work](parallel-work.md).
 
 Record authority once and carry it into assigned contracts. Full filesystem
 access and disabled command approvals do not grant commit, push, PR or deployment

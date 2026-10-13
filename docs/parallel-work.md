@@ -1,8 +1,11 @@
 # Parallel work with Herdr
 
-Use parallel work when explicitly requested. Herdr owns visible processes, Git
-owns isolation, `agent-goal` validates each task, and the coordinator reviews and
-integrates results. Start two ready workers; the maximum is three per run. There
+Use parallel work when explicitly requested. The standing preference in this
+setup counts a multi-repository autonomous implementation goal as a request for
+bounded per-repository delegation; repeating `parallel-work` is unnecessary.
+Other tasks remain single-agent unless delegation is requested. Herdr owns visible
+processes, Git owns isolation, `agent-goal` validates each task, and the coordinator
+reviews and integrates results. Start two ready workers; the maximum is three per run. There
 is no background scheduler: the coordinator launches another batch when ready.
 
 For short supervised work, use sibling panes. Shared-checkout edits require

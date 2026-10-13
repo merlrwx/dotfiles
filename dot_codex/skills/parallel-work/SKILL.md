@@ -7,8 +7,10 @@ description: Coordinate explicitly requested parallel or delegated coding and bo
 
 Require `HERDR_ENV=1` before Herdr control and read its installed `herdr` skill.
 Inspect instructions, Git status and existing run state. Preserve unrelated
-sessions and work. Delegate only when the user explicitly asks; workers must not
-delegate recursively or adopt sibling goals.
+sessions and work. Delegate only when the user explicitly asks, including the
+standing request for bounded per-repository delegation in multi-repository
+autonomous implementation goals. Other work stays single-agent by default.
+Workers must not delegate recursively or adopt sibling goals.
 
 ## Choose the mode
 
