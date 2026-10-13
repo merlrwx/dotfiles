@@ -598,6 +598,16 @@ else:
 
     consumer_root = Path(consumer[0]["worktree"])
     inventory = json.loads((consumer_root / ".agent/ACTIVE").read_text())["verify_inputs"]
+    # Even an internally valid activation must still match the worker contract.
+    active_file = consumer_root / ".agent/ACTIVE"
+    original_active = active_file.read_text()
+    for field, value in (("verify_inputs", []), ("continuation", "pi")):
+        record = json.loads(original_active)
+        record[field] = value
+        active_file.write_text(json.dumps(record))
+        inspected = json.loads(call_worker("inspect", "consumer", "--run-id", "sequential").stdout)
+        assert inspected["goal_state"] == "invalid", field
+    active_file.write_text(original_active)
     assert [item["path"] for item in inventory] == ["scripts/verify-ab"]
     helper = consumer_root / "scripts/verify-ab"
     helper.write_text(helper.read_text() + "# changed pinned helper\n")

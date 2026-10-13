@@ -164,20 +164,6 @@ def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
-def activation_id(worktree: Path) -> str:
-    # Called only after the shared API validates the lifecycle. This reads the
-    # validated activation identity, not a second implementation of validation.
-    active = worktree / ".agent/ACTIVE"
-    if active.is_file():
-        record = json.loads(active.read_text())
-    else:
-        record = json.loads((worktree / ".agent/COMPLETE").read_text())["active"]
-    value = record.get("goal_id")
-    if not isinstance(value, str) or not value:
-        raise WorkerError("Goal activation has no task identity.")
-    return value
-
-
 def goal_status(task: dict[str, Any]) -> dict[str, Any]:
     if task.get("cleaned_at"):
         return {"status": "cleaned", "continue": False}
@@ -193,13 +179,15 @@ def goal_status(task: dict[str, Any]) -> dict[str, Any]:
     if result.returncode or data.get("error"):
         return {**data, "status": "invalid"}
     if data.get("status") in {"active", "paused", "blocked", "complete", "verified_complete"}:
-        goal = Path(task["worktree"]) / ".agent/GOAL.md"
-        if not task.get("goal_sha256") or hashlib.sha256(goal.read_bytes()).hexdigest() != task["goal_sha256"]:
+        if not task.get("goal_sha256") or data.get("goal_sha256") != task["goal_sha256"]:
             return {**data, "status": "invalid", "continue": False, "error": "Original task goal digest mismatch."}
         if task.get("goal_activated_at") and not task.get("goal_id"):
             return {**data, "status": "invalid", "continue": False, "error": "Original activation identity is missing."}
-        if task.get("goal_id") and activation_id(Path(task["worktree"])) != task["goal_id"]:
+        if task.get("goal_id") and data.get("goal_id") != task["goal_id"]:
             return {**data, "status": "invalid", "continue": False, "error": "Original task activation identity mismatch."}
+        if (data.get("continuation") != task.get("continuation")
+                or data.get("verify_inputs") != task.get("verify_inputs", [])):
+            return {**data, "status": "invalid", "continue": False, "error": "Original continuation or verifier inventory mismatch."}
     return data
 
 
@@ -582,7 +570,7 @@ def launch_task(path: Path, name: str, *, resume: bool = False) -> dict[str, Any
             if (status.get("status") != "active" or status.get("verifier") != task["verifier"]
                     or status.get("verifier_sha256") != task["verifier_sha256"]):
                 raise WorkerError("Goal activation identity mismatch.")
-            task = update_task(path, name, goal_activated_at=now(), goal_id=activation_id(worktree), status="goal_activated")
+            task = update_task(path, name, goal_activated_at=now(), goal_id=status["goal_id"], status="goal_activated")
         status = goal_status(task)
         if status["status"] in {"paused", "blocked"} and resume:
             run([resolve_agent_goal(), "resume"], cwd=worktree)
@@ -1020,6 +1008,11 @@ def command_cleanup(args: argparse.Namespace) -> int:
                         output.add(child, arcname=child.name)
             with archive.open("rb") as handle:
                 os.fsync(handle.fileno())
+            archive_fd = os.open(archive_dir, os.O_RDONLY)
+            try:
+                os.fsync(archive_fd)
+            finally:
+                os.close(archive_fd)
             if tree_fingerprint(worktree) != before:
                 raise WorkerError("Worker files changed during cleanup archive; refusing removal.")
             proof = {"archive": str(archive), "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),

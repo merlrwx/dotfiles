@@ -203,13 +203,15 @@ def inspect_goal(root: Path) -> dict:
             if "ACTIVE" not in markers:
                 raise GoalError("pause or blocker has no ACTIVE record")
             data = read_record(directory / "ACTIVE")
-            validate_record(root, data)
+            snapshot = validate_record(root, data)
             result["status"] = (
                 "paused" if "PAUSE" in markers else "blocked" if "BLOCKED.md" in markers else "active"
             )
         result.update(
             verifier=data["verifier"], verifier_sha256=data["verifier_sha256"],
             continuation=data.get("continuation", "hook"), record=data,
+            goal_id=data.get("goal_id"), goal_sha256=snapshot["goal_sha256"],
+            verify_inputs=data.get("verify_inputs", []),
         )
         result["continue"] = result["status"] == "active"
     except (GoalError, OSError, ValueError, TypeError) as error:
