@@ -30,7 +30,7 @@ for name, requested in config["tools"].items():
     assert entry["version"] == requested, name
     assert entry["specifiers"] == [requested], name
     if name.startswith("pipx:"):
-        lock_path = mise_dir / entry["uv"]["path"]
+        lock_path = mise_dir / "dot_mise" / Path(entry["uv"]["path"]).relative_to(".mise")
         assert (lock_path / "uv.lock").is_file(), name
         assert (lock_path / "pyproject.toml").is_file(), name
     else:
@@ -89,7 +89,7 @@ assert "mise completion bash" in completion_init
 installer = (root / "install").read_text()
 assert "dot_config/mise/config.toml" in installer
 assert "dot_config/mise/mise.lock" in installer
-assert "dot_config/mise/.mise/locks" in installer
+assert "dot_config/mise/dot_mise/locks" in installer
 assert 'install --locked --cd "$HOME"' in installer
 assert "chezmoi --source \"$dotfiles_root\"" in installer
 assert 'apply --force --include=files "$HOME/.config/nvim"' in installer
