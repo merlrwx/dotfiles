@@ -433,6 +433,12 @@ else:
     environment.pop("FAKE_HERDR_LOSE_REMOVE")
     assert not second_root.exists()
     assert call_worker("cleanup", "phase-02", "--run-id", "three-phase").returncode == 0
+    assert third_root.parent.exists(), "cleanup must preserve sibling task directories"
+    call_worker("cleanup", "phase-03", "--run-id", "three-phase")
+    assert not third_root.parent.exists(), "empty run container should be removed"
+    repo_container = third_root.parent.parent
+    assert not repo_container.exists() or any(repo_container.iterdir()), "empty repository container should be removed"
+    assert third_root.parent.parent.parent.exists(), "configured worktree root must remain"
 
     # Discovery is shallow and deduplicates linked checkouts by canonical common dir.
     linked = temp / "linked"

@@ -1026,6 +1026,10 @@ def command_cleanup(args: argparse.Namespace) -> int:
                 raise WorkerError("Herdr returned success but worktree still exists.")
         task["cleaned_at"] = now()
         write_manifest(path, manifest)
+        # Remove only empty generated containers, never the configured root.
+        for directory in (worktree.parent, worktree.parent.parent):
+            with contextlib.suppress(OSError):
+                directory.rmdir()
     print(json.dumps({"name": args.name, "cleaned": True, "branch_retained": task["branch"],
                       "archive": proof["archive"]}, indent=2))
     return 0
