@@ -89,7 +89,8 @@ fi
 (
     cd -- "$HOME"
     "$MISE" exec -- chezmoi --source "$dotfiles_root" --destination "$HOME" \
-        apply --force --include=files "$HOME/.config/nvim"
+        --override-data '{"profile":"cli"}' \
+        apply --force --include=files,dirs "$HOME/.config/nvim"
 )
 
 # ~~~~~~~~~~~~~~~ Shared agent instructions and skills ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -127,9 +128,9 @@ if ! command -v codex >/dev/null 2>&1 && [[ ! -x "$codex_install_dir/codex" ]]; 
     curl -fsSL https://chatgpt.com/codex/install.sh | sh
 fi
 
-pi_install_dir="$HOME/.local/bin"
+pi_install_dir="$HOME/.pi/agent/bin"
 if ! command -v pi >/dev/null 2>&1 && [[ ! -x "$pi_install_dir/pi" ]]; then
-    curl -fsSL https://pi.dev/install.sh | sh
+    curl -fsSL https://pi.dev/install.sh | "$MISE" exec -- sh
 fi
 
 # ~~~~~~~~~~~~~~~ Bash and Git integration ~~~~~~~~~~~~~~~~~~~~~~~~

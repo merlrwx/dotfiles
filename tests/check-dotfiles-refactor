@@ -93,7 +93,7 @@ assert "dot_config/mise/mise.lock" in installer
 assert "dot_config/mise/dot_mise/locks" in installer
 assert 'install --locked --cd "$HOME"' in installer
 assert "chezmoi --source \"$dotfiles_root\"" in installer
-assert 'apply --force --include=files "$HOME/.config/nvim"' in installer
+assert 'apply --force --include=files,dirs "$HOME/.config/nvim"' in installer
 
 readme = (root / "README.md").read_text()
 guide = (root / "docs/neovim.md").read_text()
