@@ -588,7 +588,12 @@ else:
     git(repo, "commit", "-qm", "test: integrate queued producer")
     after_queue = git(repo, "rev-parse", "HEAD")
     call_worker("integrated", "producer", "--run-id", "sequential", "--at", "HEAD", "--checkout", str(repo))
-    consumer = json.loads(call_worker("launch", "--run-id", "sequential").stdout)
+    # A permissive host umask must not change the queued verifier inventory.
+    previous_umask = os.umask(0o002)
+    try:
+        consumer = json.loads(call_worker("launch", "--run-id", "sequential").stdout)
+    finally:
+        os.umask(previous_umask)
     assert [task["name"] for task in consumer] == ["consumer"]
     assert consumer[0]["initial_base_commit"] == before_queue
     assert consumer[0]["base_commit"] == after_queue

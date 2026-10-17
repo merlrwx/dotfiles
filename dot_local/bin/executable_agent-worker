@@ -563,6 +563,10 @@ def launch_task(path: Path, name: str, *, resume: bool = False) -> dict[str, Any
                     source = worktree / item["path"]
                     if source.is_symlink() or hashlib.sha256(source.read_bytes()).hexdigest() != item["sha256"]:
                         raise WorkerError("Verifier input changed before goal activation.")
+                    # Git applies the process umask on checkout (for example,
+                    # 0755 becomes 0775 under 0002). Pin the recorded base mode
+                    # before activation; never normalize an active goal.
+                    source.chmod(item["mode"])
                     input_args.extend(["--verify-input", item["path"]])
                 run([resolve_agent_goal(), "start", "--verify", task["verifier"],
                      "--continuation", task["continuation"], *input_args], cwd=worktree)
