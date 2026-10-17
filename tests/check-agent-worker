@@ -1,10 +1,7 @@
-#!/usr/bin/env bash
-
-set -euo pipefail
-
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-
-python3 - "$repo_root" <<'PY'
+#!/usr/bin/env python3
+""":"
+exec python3 "$0" "$@"
+":"""
 from __future__ import annotations
 
 import json
@@ -15,7 +12,7 @@ import sys
 from tempfile import TemporaryDirectory
 
 
-source_root = Path(sys.argv[1])
+source_root = Path(__file__).resolve().parents[1]
 worker_script = source_root / "dot_local/bin/executable_agent-worker"
 goal_cli = source_root / "dot_local/bin/executable_agent-goal"
 
@@ -353,4 +350,3 @@ else:
     assert len([item for item in git(repo, "worktree", "list", "--porcelain").splitlines() if item.startswith("worktree ")]) == 5
 
 print("agent-worker checks passed.")
-PY

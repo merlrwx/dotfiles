@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+"""Offline acceptance checks for the restricted Ciel worker transport."""
+import copy
+from concurrent.futures import ThreadPoolExecutor
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+
+SOURCE = Path(__file__).resolve().parents[1] / 'dot_local/bin/executable_agent-ciel-worker'
+loader = importlib.machinery.SourceFileLoader('ciel', str(SOURCE))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+ciel = importlib.util.module_from_spec(spec)
+loader.exec_module(ciel)
+
+
+class Transport(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.repo = self.root / 'repo'
+        self.repo.mkdir()
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Test')
+        self.git('config', 'user.email', 'test@example.invalid')
+        (self.repo / 'src').mkdir()
+        (self.repo / 'src/result').write_text('before\n')
+        (self.repo / 'verify').write_text('#!/bin/sh\nexit 0\n')
+        (self.repo / 'verify').chmod(0o755)
+        self.git('add', '.')
+        self.git('commit', '-qm', 'baseline')
+        self.cfg = {'version': 1, 'enabled': True, 'session': 'ciel', 'state_root': str(self.root / 'state'),
+                    'worktree_root': str(self.root / 'trees'), 'max_active': 1,
+                    'repositories': {'owner/repo': {'checkout': str(self.repo), 'paths': ['src'], 'verifier': 'verify'}}}
+        Path(self.cfg['worktree_root']).mkdir(mode=0o700)
+        self.config = self.root / 'config.json'
+        ciel.save(self.config, self.cfg)
+        self.request = {'action': 'submit', 'task_id': 'work-one', 'repo': 'owner/repo', 'title': 'Update result',
+                        'outcome': 'Update src/result', 'acceptance': ['Result is updated'], 'paths': ['src'],
+                        'context': '', 'source_refs': []}
+        self.calls = []
+        self.original = ciel.execute
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True).strip()
+
+    def execute(self, argv, **kwargs):
+        self.calls.append((argv, kwargs))
+        if argv[0] == 'herdr':
+            self.assertNotIn('HERDR_ENV', kwargs.get('env', {}))
+            if 'create' in argv:
+                return json.dumps({'result': {'root_pane': {'pane_id': 'w1:p1'}}})
+            return '{}'
+        if argv[0] == 'agent-worker':
+            if argv[1] == 'spawn':
+                self.assertEqual(os.environ.get('HERDR_ENV'), '1')
+                return '{}'
+            r = ciel.read_json(ciel.record_path(self.cfg, 'work-one'))
+            root = Path(r['worktree'])
+            patch_text = self.original(['git', '-C', str(root), 'diff', '--binary', r['base_commit']])
+            target = Path(self.cfg['state_root']) / 'runs' / r['run_id'] / (r['name'] + '.patch')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(patch_text)
+            return json.dumps({'patch_path': str(target), 'patch_sha256': ciel.digest(patch_text.encode())})
+        if argv[0] == 'gh':
+            return '{"name":"repo"}'
+        return self.original(argv, **kwargs)
+
+    def submit(self):
+        return ciel.submit(self.cfg, self.request, self.config)
+
+    def prepared(self):
+        self.submit()
+        record = ciel.read_json(ciel.record_path(self.cfg, 'work-one'))
+        root = Path(record['worktree'])
+        self.original(['git', '-C', str(self.repo), 'worktree', 'add', '--detach', str(root), record['base_commit']])
+        state = root / '.agent'
+        state.mkdir()
+        exclude = Path(self.original(['git', '-C', str(root), 'rev-parse', '--git-path', 'info/exclude']).strip())
+        with exclude.open('a') as stream:
+            stream.write('\n/.agent/\n')
+        (state / 'COMPLETE').write_text('completed_at: now\nverifier: verify\nhead: ' + record['base_commit'][:7] + '\n')
+        (root / 'src/result').write_text('after\n')
+        task = {k: record[k] for k in ('name', 'worktree', 'base_commit', 'verifier', 'verifier_sha256')}
+        task.update(repo=record['checkout'], status='prompt_submitted')
+        ciel.save(Path(self.cfg['state_root']) / 'runs' / (record['run_id'] + '.json'),
+                  {'run_id': record['run_id'], 'repo': record['checkout'], 'tasks': {record['name']: task}})
+        return record, root
+
+    def test_config_fail_closed(self):
+        ciel.config(self.config)
+        for key, value in [('enabled', False), ('max_active', 2), ('version', True), ('session', '../bad')]:
+            data = copy.deepcopy(self.cfg)
+            data[key] = value
+            ciel.save(self.config, data)
+            with self.assertRaises(ciel.Rejected):
+                ciel.config(self.config)
+        ciel.save(self.config, self.cfg)
+        self.config.chmod(0o666)
+        with self.assertRaises(ciel.Rejected):
+            ciel.config(self.config)
+
+    def test_authority_and_types(self):
+        ciel.validate(self.request, self.cfg)
+        for key, value in [('command', 'sh'), ('checkout', '/tmp'), ('verifier', 'true'), ('session', 'elsewhere'),
+                           ('policy', 'publish'), ('host', 'other'), ('paths', ['../secret']), ('paths', ['verify']),
+                           ('paths', ['src/../../x']), ('paths', ['src//x']), ('repo', 'other/repo'),
+                           ('acceptance', 'wrong'), ('task_id', True), ('task_id', '--bad')]:
+            request = {**self.request, key: value}
+            with self.subTest(key=key, value=value), self.assertRaises(ciel.Rejected):
+                ciel.validate(request, self.cfg)
+        with self.assertRaises(ciel.Rejected):
+            ciel.decode('{"action":"status","action":"submit"}')
+
+    def test_duplicate_and_uncertain_dispatch(self):
+        with patch.object(ciel, 'execute', self.execute):
+            first = self.submit()
+            self.assertEqual(self.submit(), first)
+            self.assertEqual(sum('create' in a for a, _ in self.calls), 1)
+            self.assertEqual(sum('run' in a for a, _ in self.calls), 1)
+            with self.assertRaises(ciel.Rejected):
+                ciel.submit(self.cfg, {**self.request, 'outcome': 'changed'}, self.config)
+            with self.assertRaises(ciel.Rejected):
+                ciel.submit(self.cfg, {**self.request, 'task_id': 'second'}, self.config)
+            record = ciel.read_json(ciel.record_path(self.cfg, 'work-one'))
+            record['phase'] = 'bootstrap_requested'
+            ciel.save(ciel.record_path(self.cfg, 'work-one'), record)
+            self.submit()
+            self.assertEqual(sum('create' in a for a, _ in self.calls), 1)
+
+    def test_run_real_environment_and_at_most_once(self):
+        with patch.object(ciel, 'execute', self.execute):
+            self.submit()
+            with patch.dict(os.environ, {'HERDR_ENV': '0'}), self.assertRaises(ciel.Rejected):
+                ciel.run_worker(self.cfg, 'work-one')
+            with patch.dict(os.environ, {'HERDR_ENV': '1'}):
+                ciel.run_worker(self.cfg, 'work-one')
+                ciel.run_worker(self.cfg, 'work-one')
+            self.assertEqual(sum(a[:2] == ['agent-worker', 'spawn'] for a, _ in self.calls), 1)
+            contract = ciel.record_path(self.cfg, 'work-one').with_suffix('.md').read_text()
+            for heading in ('## Outcome', '## Acceptance criteria', '### May modify', '### May operate',
+                            '## Invariants', '## Verification', '## Git workflow'):
+                self.assertIn(heading, contract)
+            self.assertIn('No commits, pushes, PRs, or deployments', contract)
+
+    def test_recovery_receipt_and_collect(self):
+        with patch.object(ciel, 'execute', self.execute):
+            record, root = self.prepared()
+            self.assertTrue(ciel.status(self.cfg, record)['verified'])
+            first = ciel.collect(self.cfg, record)
+            self.assertTrue(first['ready'])
+            self.assertIn('+after', first['patch'])
+            self.assertEqual(first, ciel.collect(self.cfg, record))
+            self.assertEqual(sum(a[:2] == ['agent-worker', 'collect'] for a, _ in self.calls), 1)
+            (root / 'verify').write_text('#!/bin/sh\nexit 1\n')
+            self.assertFalse(ciel.collect(self.cfg, record)['ready'])
+
+    def test_active_not_idle_or_fake_receipt(self):
+        with patch.object(ciel, 'execute', self.execute):
+            record, root = self.prepared()
+            (root / '.agent/ACTIVE').write_text('{}')
+            self.assertFalse(ciel.collect(self.cfg, record)['ready'])
+            (root / '.agent/ACTIVE').unlink()
+            (root / '.agent/COMPLETE').write_text('fake')
+            self.assertFalse(ciel.collect(self.cfg, record)['ready'])
+
+    def test_out_of_scope_result(self):
+        with patch.object(ciel, 'execute', self.execute):
+            record, root = self.prepared()
+            (root / 'verify').chmod(0o644)
+            self.assertFalse(ciel.status(self.cfg, record)['verified'])
+            (root / 'verify').chmod(0o755)
+            (root / 'outside').write_text('bad')
+            with self.assertRaises(ciel.Rejected):
+                ciel.collect(self.cfg, record)
+
+    def test_github_restrictions(self):
+        with patch.object(ciel, 'execute', self.execute):
+            for operation in ('repository', 'issues', 'pull_requests', 'file', 'checks', 'status'):
+                request = {'action': 'github_read', 'repo': 'owner/repo', 'operation': operation}
+                if operation == 'file':
+                    request.update(path='src/result', ref='feature/test')
+                ciel.validate(request, self.cfg)
+                ciel.github(request)
+            for argv, _ in self.calls:
+                self.assertEqual(argv[:6], ['gh', 'api', '--hostname', 'github.com', '--method', 'GET'])
+            for extra in ({'operation': 'POST'}, {'path': '../a', 'operation': 'file'},
+                          {'path': '.env', 'operation': 'file'}, {'path': 'a/credentials.json', 'operation': 'file'},
+                          {'path': 'a/key.pem', 'operation': 'file'}, {'ref': '../bad', 'operation': 'checks'},
+                          {'limit': True}, {'limit': 101}, {'ref': 'a?x=1', 'operation': 'status'}):
+                with self.subTest(extra=extra), self.assertRaises(ciel.Rejected):
+                    ciel.github({'action': 'github_read', 'repo': 'owner/repo', 'operation': 'issues', **extra})
+            for extra in ({'route': '/user'}, {'host': 'evil'}, {'token': 'no'}, {'method': 'POST'}):
+                with self.assertRaises(ciel.Rejected):
+                    ciel.validate({'action': 'github_read', 'repo': 'owner/repo', 'operation': 'repository', **extra}, self.cfg)
+
+    def test_cli_bounded_errors(self):
+        for payload in ('[]', '{bad', 'x' * 65537, json.dumps({'action': 'status', 'task_id': 'missing'})):
+            result = subprocess.run([str(SOURCE), '--config', str(self.config), 'transport'],
+                                    input=payload, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(json.loads(result.stdout)['ok'])
+            self.assertEqual(result.stderr, '')
+
+    def test_subprocess_limits_and_secret_error(self):
+        with self.assertRaises(ciel.Rejected):
+            ciel.execute(['python3', '-c', 'import time; time.sleep(2)'], timeout=0.05)
+        with self.assertRaises(ciel.Rejected) as error:
+            ciel.execute(['python3', '-c', 'import sys; sys.stderr.write("secret"); sys.exit(1)'])
+        self.assertNotIn('secret', str(error.exception))
+
+    def test_versioned_host_receipt_validation(self):
+        with patch.object(ciel, 'execute', self.execute):
+            record, root = self.prepared()
+        (root / '.agent/COMPLETE').write_text('{"version":2}')
+        response = {'status': 'complete', 'verifier': 'verify', 'verifier_sha256': record['verifier_sha256']}
+        with patch.object(ciel, 'execute', return_value=json.dumps(response)) as tool:
+            self.assertTrue(ciel.status(self.cfg, record)['verified'])
+            tool.assert_called_once_with(['agent-goal', 'status', '--json'], cwd=root)
+        for changed in ({'status': 'invalid'}, {'verifier_sha256': '0' * 64}):
+            with patch.object(ciel, 'execute', return_value=json.dumps({**response, **changed})):
+                self.assertFalse(ciel.status(self.cfg, record)['verified'])
+
+    def test_real_helpers_with_fake_subprocess_tools(self):
+        (self.repo / 'verify').write_text('#!/bin/sh\ntest "$(cat src/result)" = "real integration result"\n')
+        self.git('add', 'verify')
+        self.git('commit', '-qm', 'test: require actual result')
+        binary = self.root / 'bin'
+        binary.mkdir()
+        (binary / 'agent-worker').symlink_to(SOURCE.with_name('executable_agent-worker'))
+        (binary / 'agent-goal').symlink_to(SOURCE.with_name('executable_agent-goal'))
+        fake = binary / 'herdr'
+        fake.write_text('''#!/usr/bin/env python3
+import json, os, subprocess, sys
+from pathlib import Path
+args = sys.argv[1:]
+with open(os.environ['CIEL_TEST_LOG'], 'a') as log:
+    log.write(json.dumps({'args': args, 'herdr_env': os.environ.get('HERDR_ENV')}) + '\\n')
+if args[:1] == ['--session']:
+    args = args[2:]
+def option(key):
+    return args[args.index(key) + 1]
+if args[:2] == ['workspace', 'create']:
+    result = {'root_pane': {'pane_id': 'bootstrap:p1'}}
+elif args[:2] == ['pane', 'run']:
+    result = {}
+elif args[:2] == ['agent', 'list']:
+    result = {'agents': []}
+elif args[:2] == ['worktree', 'create']:
+    subprocess.run(['git', '-C', option('--cwd'), 'worktree', 'add', '-q', '-b', option('--branch'), option('--path'), option('--base')], check=True)
+    result = {'workspace': {'workspace_id': 'worker'}, 'root_pane': {'pane_id': 'worker:p1'}}
+elif args[:2] in (['agent', 'start'], ['agent', 'prompt']):
+    result = {}
+else:
+    raise SystemExit(1)
+print(json.dumps({'result': result}))
+''')
+        fake.chmod(0o755)
+        gh = binary / 'gh'
+        gh.write_text('#!/usr/bin/env python3\nimport json, sys\nassert sys.argv[1:7] == ["api", "--hostname", "github.com", "--method", "GET", "repos/owner/repo"]\nprint("{\\"name\\":\\"repo\\"}")\n')
+        gh.chmod(0o755)
+        log = self.root / 'tool-log'
+        env = {**os.environ, 'PATH': str(binary) + ':/usr/bin:/bin',
+               'HERDR_ENV': '0', 'CIEL_TEST_LOG': str(log)}
+
+        def cli(request, command='transport', task=None, expected=0):
+            argv = [str(SOURCE), '--config', str(self.config), command]
+            if task:
+                argv.append(task)
+            result = subprocess.run(argv, input=json.dumps(request), text=True, capture_output=True, env=env)
+            self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            return json.loads(result.stdout)
+
+        processes = [subprocess.Popen([str(SOURCE), '--config', str(self.config), 'transport'],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      text=True, env=env) for _ in range(2)]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            replies = list(pool.map(lambda process: process.communicate(json.dumps(self.request)), processes))
+        self.assertTrue(all(process.returncode == 0 for process in processes), replies)
+        first = json.loads(replies[0][0])
+        self.assertEqual(first, json.loads(replies[1][0]))
+        self.assertEqual(first, cli(self.request))
+        self.assertEqual(len(log.read_text().splitlines()), 2)
+        cli({}, 'run', 'work-one', expected=1)
+        env['HERDR_ENV'] = '1'  # Fake pane environment, only for this offline test.
+        launched = cli({}, 'run', 'work-one')
+        self.assertEqual(launched['result']['status'], 'active')
+        cli({}, 'run', 'work-one')
+        entries = [json.loads(line) for line in log.read_text().splitlines()]
+        self.assertEqual(sum(e['args'][:2] == ['worktree', 'create'] for e in entries), 1)
+        self.assertEqual(entries[0]['herdr_env'], '0')
+        self.assertEqual(entries[-1]['herdr_env'], '1')
+        record = ciel.read_json(ciel.record_path(self.cfg, 'work-one'))
+        root = Path(record['worktree'])
+        (root / 'src/result').write_text('real integration result\n')
+        completed = subprocess.run([str(binary / 'agent-goal'), 'complete'], cwd=root,
+                                   env=env, text=True, capture_output=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        (root / 'src/result').write_text('failing result\n')
+        cli({'action': 'collect', 'task_id': 'work-one'}, expected=1)
+        (root / 'src/result').write_text('real integration result\n')
+        result = cli({'action': 'collect', 'task_id': 'work-one'})['result']
+        self.assertTrue(result['ready'])
+        self.assertIn('real integration result', result['patch'])
+        cli({'action': 'github_read', 'repo': 'owner/repo', 'operation': 'repository'})
+
+
+if __name__ == '__main__':
+    unittest.main()
