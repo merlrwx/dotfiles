@@ -17,7 +17,7 @@ helpers and the host PATH under operator control. Example:
   "enabled": true,
   "session": "ciel",
   "state_root": "/home/agentbox/.local/state/ciel-worker",
-  "worktree_root": "/home/agentbox/.herdr/worktrees",
+  "worktree_root": "/home/agentbox/.herdr/ciel-worktrees",
   "max_active": 1,
   "repositories": {
     "example/project": {
@@ -100,7 +100,9 @@ The transport never sets `HERDR_ENV` and never reuses another pane.
 
 An unfinished task returns `ready: false`. A completed task needs the saved
 manifest, no ACTIVE marker, a completion receipt naming the selected verifier,
-and an unchanged executable verifier. `agent-worker collect` reruns that
+and an unchanged executable verifier. Versioned receipts are validated by the
+installed `agent-goal status --json`, including the original goal digest and
+activation identity. `agent-worker collect` reruns that
 verifier. The transport checks the collected patch hash and compares the patch
 and changed paths with an independent private Git index. Out-of-scope changes
 or symlink escapes reject collection. A ready reply contains the bounded patch

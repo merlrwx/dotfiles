@@ -81,7 +81,9 @@ def decode(raw):
 
 def read_json(path):
     require(path.stat().st_size <= MAX_OUTPUT, "oversize state")
-    return decode(path.read_text())
+    value = decode(path.read_text())
+    require(type(value) is dict, 'invalid state object')
+    return value
 
 
 def save(path, data):
@@ -180,6 +182,8 @@ def validate(request, cfg):
         text(request['outcome'], 8192)
         strings(request['acceptance'])
         require(type(request['context']) is str and len(request['context'].encode()) <= 16384)
+        if request['context']:
+            text(request['context'], 16384)
         require(type(request['source_refs']) is list and len(request['source_refs']) <= 16)
         for ref in request['source_refs']:
             text(ref, 1024)
@@ -229,6 +233,7 @@ def record_path(cfg, task_id):
 
 
 def manifest_task(cfg, record):
+    require(type(record) is dict, 'invalid request record')
     require(record.get('authority_sha256') == digest(json.dumps(cfg, sort_keys=True).encode()),
             'operator configuration changed; inspect before recovery')
     path = Path(cfg['state_root']) / 'runs' / (record['run_id'] + '.json')
@@ -236,31 +241,32 @@ def manifest_task(cfg, record):
         return None
     manifest = read_json(path)
     require(manifest.get('run_id') == record['run_id'] and manifest.get('repo') == record['checkout'], 'manifest identity mismatch')
+    require(type(manifest.get('tasks')) is dict, 'invalid manifest tasks')
     task = manifest['tasks'].get(record['name'])
     if task is not None:
+        require(type(task) is dict, 'invalid task record')
         require(task.get('name') == record['name'] and task.get('repo') == record['checkout']
                 and task.get('worktree') == record['worktree'] and task.get('verifier') == record['verifier']
-                and task.get('base_commit') == record['base_commit'], 'task identity mismatch')
+                and task.get('base_commit') == record['base_commit']
+                and task.get('goal_sha256') == record['goal_sha256'], 'task identity mismatch')
         if task.get('verifier_sha256'):
             require(task['verifier_sha256'] == record['verifier_sha256'], 'manifest verifier changed')
     return task
 
 
-def completion_receipt(root, record):
+def completion_receipt(root, record, task):
     path = root / '.agent/COMPLETE'
     require(path.stat().st_size <= 65536, 'completion receipt too large')
-    receipt = path.read_text()
-    if receipt.lstrip().startswith('{'):
-        # Newer host harnesses own their versioned receipt/input validation.
-        state = decode(execute(['agent-goal', 'status', '--json'], cwd=root))
-        return (state.get('status') == 'complete' and state.get('verifier') == record['verifier']
-                and state.get('verifier_sha256') == record['verifier_sha256'])
-    # Compatibility with this repository's original agent-goal text receipt.
-    lines = receipt.splitlines()
-    values = dict(line.split(': ', 1) for line in lines if ': ' in line)
-    return (len(lines) == 3 and set(values) == {'completed_at', 'verifier', 'head'}
-            and bool(values['completed_at']) and values['verifier'] == record['verifier']
-            and bool(re.fullmatch(r'[0-9a-f]{7,64}', values['head'])))
+    receipt = read_json(path)
+    require(type(receipt) is dict and receipt.get('version') == 2, 'unsupported completion receipt')
+    # The host harness owns versioned receipt and pinned-input validation.
+    state = decode(execute(['agent-goal', 'status', '--json'], cwd=root))
+    require(type(state) is dict, 'invalid lifecycle observation')
+    return (state.get('status') == 'complete' and state.get('verifier') == record['verifier']
+            and state.get('verifier_sha256') == record['verifier_sha256']
+            and state.get('goal_sha256') == record['goal_sha256']
+            and bool(task.get('goal_id')) and state.get('goal_id') == task['goal_id']
+            and state.get('continuation') == 'native' and state.get('verify_inputs') == [])
 
 
 def status(cfg, record):
@@ -279,9 +285,13 @@ def status(cfg, record):
                 state = 'paused'
         elif (agent / 'COMPLETE').is_file():
             verifier = root / record['verifier']
+            try:
+                receipt_valid = completion_receipt(root, record, task)
+            except (Rejected, OSError, ValueError, KeyError, TypeError):
+                receipt_valid = False
             verified = (verifier.resolve().is_relative_to(root.resolve()) and verifier.is_file()
                         and os.access(verifier, os.X_OK) and digest(verifier.read_bytes()) == record['verifier_sha256']
-                        and completion_receipt(root, record))
+                        and receipt_valid)
             state = 'verified_complete' if verified else 'verification_invalid'
     return {'task_id': record['request']['task_id'], 'run_id': record['run_id'], 'name': record['name'],
             'repo': record['request']['repo'], 'status': state, 'verified': verified,
@@ -326,19 +336,30 @@ def submit(cfg, request, config_path):
     require(digest(committed.encode()) == digest((checkout / verifier).read_bytes()), 'verifier differs from base')
     token = digest(request['task_id'].encode())[:24]
     name = 'ciel-' + token
+    common = Path(execute(['git', '-C', str(checkout), 'rev-parse', '--git-common-dir']).strip())
+    identity = str((checkout / common).resolve())
+    repo_key = re.sub(r'[^a-zA-Z0-9_-]', '-', Path(identity).parent.name)[:24] + '-' + digest(identity.encode())[:12]
+    worktree = Path(cfg['worktree_root']) / repo_key / name / name
+    goal_text = goal(request, repo)
+    worker_goal = goal_text.rstrip() + (f'\n\n## Worker ownership\n\nTask: {name}. Work only on this contract. '
+                                      'Do not discover or adopt sibling goals or tasks, and do not delegate recursively.\n')
     record = {'request': request, 'run_id': name, 'name': name, 'phase': 'reserved',
-              'checkout': str(checkout), 'worktree': str(Path(cfg['worktree_root']) / checkout.name / name),
+              'checkout': str(checkout), 'worktree': str(worktree),
               'authority_sha256': digest(json.dumps(cfg, sort_keys=True).encode()),
+              'goal_sha256': digest(worker_goal.encode()),
               'base_commit': base, 'verifier': verifier, 'verifier_sha256': digest((checkout / verifier).read_bytes())}
     save(path, record)  # Durable reservation precedes every non-idempotent operation.
     goal_path = path.with_suffix('.md')
-    goal_path.write_text(goal(request, repo))
+    goal_path.write_text(goal_text)
     record['phase'] = 'bootstrap_requested'
     save(path, record)
     created = decode(execute(['herdr', '--session', cfg['session'], 'workspace', 'create',
                              '--cwd', str(checkout), '--label', name + '-bootstrap', '--no-focus']))
+    require(type(created) is dict, 'invalid bootstrap response')
     payload = created.get('result', created)
+    require(type(payload) is dict, 'invalid bootstrap payload')
     pane = payload.get('root_pane', {})
+    require(type(pane) is dict, 'invalid bootstrap pane')
     pane_id = pane.get('pane_id', pane.get('id'))
     require(type(pane_id) is str and re.fullmatch(r'[A-Za-z0-9:_-]{1,128}', pane_id), 'bootstrap pane ID missing')
     record.update(phase='dispatch_requested', bootstrap_pane=pane_id)
@@ -377,6 +398,7 @@ def collect(cfg, record):
     env = os.environ.copy()
     env['AGENT_RUNS_DIR'] = str(Path(cfg['state_root']) / 'runs')
     receipt = decode(execute(['agent-worker', 'collect', record['name'], '--run-id', record['run_id']], env=env, timeout=120))
+    require(type(receipt) is dict, 'invalid collection receipt')
     patch_path = Path(cfg['state_root']) / 'runs' / record['run_id'] / (record['name'] + '.patch')
     require(receipt.get('patch_path') == str(patch_path), 'unexpected patch location')
     require(patch_path.stat().st_size <= MAX_OUTPUT // 2, 'patch exceeds transport limit')

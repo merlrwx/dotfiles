@@ -71,6 +71,11 @@ class Transport(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(patch_text)
             return json.dumps({'patch_path': str(target), 'patch_sha256': ciel.digest(patch_text.encode())})
+        if argv[0] == 'agent-goal':
+            r = ciel.read_json(ciel.record_path(self.cfg, 'work-one'))
+            return json.dumps({'status': 'complete', 'verifier': r['verifier'], 'verifier_sha256': r['verifier_sha256'],
+                               'goal_sha256': r['goal_sha256'], 'goal_id': 'test-goal',
+                               'continuation': 'native', 'verify_inputs': []})
         if argv[0] == 'gh':
             return '{"name":"repo"}'
         return self.original(argv, **kwargs)
@@ -88,10 +93,11 @@ class Transport(unittest.TestCase):
         exclude = Path(self.original(['git', '-C', str(root), 'rev-parse', '--git-path', 'info/exclude']).strip())
         with exclude.open('a') as stream:
             stream.write('\n/.agent/\n')
-        (state / 'COMPLETE').write_text('completed_at: now\nverifier: verify\nhead: ' + record['base_commit'][:7] + '\n')
+        (state / 'COMPLETE').write_text('{"version":2}')
         (root / 'src/result').write_text('after\n')
         task = {k: record[k] for k in ('name', 'worktree', 'base_commit', 'verifier', 'verifier_sha256')}
-        task.update(repo=record['checkout'], status='prompt_submitted')
+        task.update(repo=record['checkout'], status='prompt_submitted', goal_sha256=record['goal_sha256'],
+                    goal_id='test-goal', continuation='native', verify_inputs=[])
         ciel.save(Path(self.cfg['state_root']) / 'runs' / (record['run_id'] + '.json'),
                   {'run_id': record['run_id'], 'repo': record['checkout'], 'tasks': {record['name']: task}})
         return record, root
@@ -114,7 +120,7 @@ class Transport(unittest.TestCase):
         for key, value in [('command', 'sh'), ('checkout', '/tmp'), ('verifier', 'true'), ('session', 'elsewhere'),
                            ('policy', 'publish'), ('host', 'other'), ('paths', ['../secret']), ('paths', ['verify']),
                            ('paths', ['src/../../x']), ('paths', ['src//x']), ('repo', 'other/repo'),
-                           ('acceptance', 'wrong'), ('task_id', True), ('task_id', '--bad')]:
+                           ('acceptance', 'wrong'), ('context', 'bad\0context'), ('task_id', True), ('task_id', '--bad')]:
             request = {**self.request, key: value}
             with self.subTest(key=key, value=value), self.assertRaises(ciel.Rejected):
                 ciel.validate(request, self.cfg)
@@ -218,15 +224,44 @@ class Transport(unittest.TestCase):
             ciel.execute(['python3', '-c', 'import sys; sys.stderr.write("secret"); sys.exit(1)'])
         self.assertNotIn('secret', str(error.exception))
 
+    def test_timeout_does_not_redispatch(self):
+        def fail_create(argv, **kwargs):
+            if argv[0] == 'herdr':
+                self.calls.append((argv, kwargs))
+                raise ciel.Rejected('observation timed out')
+            return self.original(argv, **kwargs)
+        with patch.object(ciel, 'execute', fail_create):
+            with self.assertRaises(ciel.Rejected):
+                self.submit()
+            result = self.submit()
+            self.assertEqual(result['status'], 'bootstrap_requested')
+            self.assertEqual(len(self.calls), 1)
+
+    def test_symlink_and_config_change_rejected(self):
+        (self.repo / 'src/escape').symlink_to(self.root)
+        request = {**self.request, 'paths': ['src/escape/file']}
+        with self.assertRaises(ciel.Rejected):
+            ciel.validate(request, self.cfg)
+        (self.repo / 'src/escape').unlink()
+        with patch.object(ciel, 'execute', self.execute):
+            self.submit()
+            changed = copy.deepcopy(self.cfg)
+            changed['session'] = 'different'
+            record = ciel.read_json(ciel.record_path(self.cfg, 'work-one'))
+            with self.assertRaises(ciel.Rejected):
+                ciel.status(changed, record)
+
     def test_versioned_host_receipt_validation(self):
         with patch.object(ciel, 'execute', self.execute):
             record, root = self.prepared()
         (root / '.agent/COMPLETE').write_text('{"version":2}')
-        response = {'status': 'complete', 'verifier': 'verify', 'verifier_sha256': record['verifier_sha256']}
+        response = {'status': 'complete', 'verifier': 'verify', 'verifier_sha256': record['verifier_sha256'],
+                    'goal_sha256': record['goal_sha256'], 'goal_id': 'test-goal', 'continuation': 'native', 'verify_inputs': []}
         with patch.object(ciel, 'execute', return_value=json.dumps(response)) as tool:
             self.assertTrue(ciel.status(self.cfg, record)['verified'])
             tool.assert_called_once_with(['agent-goal', 'status', '--json'], cwd=root)
-        for changed in ({'status': 'invalid'}, {'verifier_sha256': '0' * 64}):
+        for changed in ({'status': 'invalid'}, {'verifier_sha256': '0' * 64}, {'goal_id': 'different'},
+                        {'goal_sha256': '0' * 64}, {'continuation': 'pi'}, {'verify_inputs': ['changed']}):
             with patch.object(ciel, 'execute', return_value=json.dumps({**response, **changed})):
                 self.assertFalse(ciel.status(self.cfg, record)['verified'])
 
@@ -243,6 +278,8 @@ class Transport(unittest.TestCase):
 import json, os, subprocess, sys
 from pathlib import Path
 args = sys.argv[1:]
+state_file = Path(os.environ['CIEL_TEST_LOG'] + '.state')
+state = json.loads(state_file.read_text()) if state_file.exists() else {'agents': [], 'path': ''}
 with open(os.environ['CIEL_TEST_LOG'], 'a') as log:
     log.write(json.dumps({'args': args, 'herdr_env': os.environ.get('HERDR_ENV')}) + '\\n')
 if args[:1] == ['--session']:
@@ -254,14 +291,26 @@ if args[:2] == ['workspace', 'create']:
 elif args[:2] == ['pane', 'run']:
     result = {}
 elif args[:2] == ['agent', 'list']:
-    result = {'agents': []}
+    result = {'agents': state['agents']}
+elif args[:2] == ['workspace', 'get']:
+    result = {'workspace': {'workspace_id': 'worker', 'worktree': {'checkout_path': state['path']}}}
+elif args[:2] == ['pane', 'list']:
+    result = {'panes': [{'pane_id': 'worker:p1'}]}
 elif args[:2] == ['worktree', 'create']:
     subprocess.run(['git', '-C', option('--cwd'), 'worktree', 'add', '-q', '-b', option('--branch'), option('--path'), option('--base')], check=True)
+    state['path'] = option('--path')
     result = {'workspace': {'workspace_id': 'worker'}, 'root_pane': {'pane_id': 'worker:p1'}}
-elif args[:2] in (['agent', 'start'], ['agent', 'prompt']):
+elif args[:2] == ['agent', 'start']:
+    state['agents'] = [{'name': args[2], 'pane_id': 'worker:p1', 'workspace_id': 'worker',
+                       'agent': 'codex', 'cwd': state['path'], 'agent_status': 'idle',
+                       'terminal_id': 't1', 'agent_session': None}]
+    result = {}
+elif args[:2] == ['agent', 'prompt']:
+    state['agents'][0]['agent_status'] = 'working'
     result = {}
 else:
     raise SystemExit(1)
+state_file.write_text(json.dumps(state))
 print(json.dumps({'result': result}))
 ''')
         fake.chmod(0o755)
