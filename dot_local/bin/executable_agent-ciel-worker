@@ -199,6 +199,16 @@ def validate(request, cfg):
         require(not any(under(verifier, [p]) for p in paths), 'verifier is immutable')
 
 
+def provider_data(value):
+    """Provider metadata can itself carry temporary credentials, even on GET."""
+    if isinstance(value, dict):
+        return {key: provider_data(item) for key, item in value.items()
+                if not re.search(r'(token|secret|password|credential|authorization|private_key)', key, re.I)}
+    if isinstance(value, list):
+        return [provider_data(item) for item in value]
+    return value
+
+
 def github(request):
     op = request['operation']
     require(type(op) is str and op in ('repository', 'issues', 'pull_requests', 'file', 'checks', 'status'))
@@ -225,6 +235,12 @@ def github(request):
     env = os.environ.copy()
     env.pop('GH_HOST', None)
     result = decode(execute(['gh', 'api', '--hostname', 'github.com', '--method', 'GET', route], env=env))
+    result = provider_data(result)
+    if op == 'repository':
+        allowed = {'id', 'name', 'full_name', 'private', 'default_branch', 'description',
+                   'html_url', 'pushed_at', 'updated_at', 'open_issues_count'}
+        require(type(result) is dict, 'invalid repository response')
+        result = {key: value for key, value in result.items() if key in allowed}
     return {'operation': op, 'repo': request['repo'], 'data': result}
 
 

@@ -189,6 +189,14 @@ class Transport(unittest.TestCase):
             with self.assertRaises(ciel.Rejected):
                 ciel.collect(self.cfg, record)
 
+    def test_provider_credentials_are_never_returned(self):
+        with patch.object(ciel, 'execute', return_value=json.dumps({
+                'name': 'repo', 'temp_clone_token': 'sensitive-fixture',
+                'owner': {'credential': 'nested-fixture'}})):
+            result = ciel.github({'action': 'github_read', 'repo': 'owner/repo', 'operation': 'repository'})
+        self.assertEqual(result['data'], {'name': 'repo'})
+        self.assertNotIn('fixture', json.dumps(ciel.provider_data({'items': [{'access_token': 'fixture', 'title': 'safe'}]})))
+
     def test_github_restrictions(self):
         with patch.object(ciel, 'execute', self.execute):
             for operation in ('repository', 'issues', 'pull_requests', 'file', 'checks', 'status'):
