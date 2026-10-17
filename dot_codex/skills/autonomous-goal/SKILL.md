@@ -1,116 +1,71 @@
 ---
 name: autonomous-goal
-description: Prepare or execute a persistent repository goal whose completion is enforced by verification and the active agent's continuation support. Use when the user invokes $autonomous-goal, asks an agent to keep working until a concrete outcome passes its checks, or resumes an active .agent goal. Do not use for ordinary interactive tasks that should end after one turn.
+description: Prepare, execute, or resume a persistent verified goal. Use when the user invokes autonomous-goal or asks to keep working to a concrete outcome. Supports repository work and organization goals; ordinary interactive tasks do not need goal state.
 ---
 
-# Autonomous Goal
+# Autonomous goal
 
-Turn a clear outcome into a small, externally checked implementation loop. The
-goal and its runtime state live under the current Git repository's `.agent/`
-directory and stay local through `.git/info/exclude`.
+Use the user's objective and existing authority. Inspect applicable instructions,
+Git state, and `agent-goal status --json` before writing files. Resume an active
+contract; preserve completed records before starting a new one. Invalid state
+needs diagnosis, not deletion or a fabricated completion marker.
 
-## Select the mode
+## Prepare or run
 
-- **Resume:** When `.agent/ACTIVE` exists, read `GOAL.md` and `PROGRESS.md`, then
-  continue the work immediately.
-- **Run now:** When invoked with a sufficiently clear goal, inspect the repo,
-  write the contract, activate it, and execute it in the same session.
-- **Prepare only:** When the user asks for review, preparation, or a later fresh
-  session, write the contract but do not run `agent-goal start`.
+For review/preparation, write the contract without activating it. For a clear
+implementation request, prepare and execute in this session. Grill only when
+requested or when an unresolved choice materially changes the outcome.
 
-Use Grill Me before preparation only when the user requests it or unresolved
-choices would materially change the goal. Do not keep grilling during execution.
+The contract in `.agent/GOAL.md` needs outcome, observable acceptance criteria,
+scope (`May modify`, `May operate`), invariants, verification, and Git workflow.
+Carry commit, push, PR, and deployment authority from the user's instructions;
+never repeatedly request authority already granted. Tool access does not grant
+publishing authority. Workers inherit only their assigned subset.
 
-## Prepare the contract
+Prefer the project's executable `scripts/verify`. Otherwise prepare a stable
+`.agent/VERIFY` with goal-specific assertions. Freeze relevant helper files with
+repeatable `--verify-input PATH`; do not claim a wrapper hash protects every
+check it discovers. When changing tests is the task, keep the independent
+acceptance assertions fixed and review the changed tests.
 
-Create `.agent/GOAL.md` with only the decisions needed to execute:
+## Continuation
 
-```markdown
-# Goal
+- **Codex:** use its native goal tool or `/goal` for persistence. Start the local
+  verifier contract with `agent-goal start --continuation native --verify PATH`,
+  then activate the native goal with the same outcome and require a successful
+  `agent-goal complete` before declaring success. The CLI flag alone does not
+  create a native goal. Native continuation and verification receipts have
+  different responsibilities.
+- **Pi:** use `agent-goal start --continuation pi --verify PATH`. The installed Pi
+  extension consumes the same lifecycle validator; only one implementation
+  agent may occupy an active-goal worktree.
+- **Older Codex:** `--continuation hook` is a compatibility reminder with one
+  repeat-stop guard, not an unbounded persistence guarantee. Prefer native goals.
 
-## Outcome
+Starting needs a clean checkout; do not use `--allow-dirty` to bypass unrelated
+work. A root agent can use the current dedicated checkout. Additional autonomous
+implementation agents need their own worktrees under the configured central root.
 
-## Acceptance criteria
+## Organization goals
 
-## Scope
+A parent directory need not be a Git repository. Keep the coordinator's native
+goal there. The user's standing preference authorizes bounded per-repository
+delegation for autonomous implementation across multiple selected repositories;
+use `parallel-work` without requiring the user to repeat that choice.
+Discover/select repositories, keep contracts beside the run manifest under
+`~/.local/state/agent-runs/`, and assign one local goal per worker worktree.
+Do not initialize a parent Git repository or add sibling folders just to hold
+state. Shared run planning and dependencies belong to `agent-worker`.
 
-### May modify
+## Execute and finish
 
-### May operate
+Make and verify scoped progress; rewrite `.agent/PROGRESS.md` at material
+milestones, keeping it short. Keep large output in local logs. Preserve the
+active verifier and its pinned inputs; failed checks require further work.
 
-## Invariants
-
-## Verification
-
-Run `./scripts/verify`.
-
-## Git workflow
-
-No commits, current-branch commits, or branch + MR. State commit, push, and MR
-authority separately.
-```
-
-Acceptance criteria must be observable. Treat `--yolo` as tool access, not as
-permission for commits, pushes, deployments, cluster changes, or destructive
-operations. Those actions require explicit authority in the goal or user prompt.
-
-Use the existing executable `scripts/verify` by default. If it cannot cover the
-goal-specific checks, create an executable `.agent/VERIFY` wrapper before
-activation and pass `--verify .agent/VERIFY`. Do not modify the selected verifier
-after activation. If changing repository verification is itself the goal, use a
-separate stable wrapper that checks the intended result.
-
-For prepare-only mode, stop after showing the contract and how to begin in a
-fresh session. For run-now mode, activate with:
-
-```bash
-agent-goal start [--verify .agent/VERIFY]
-```
-
-Starting requires a clean worktree unless the user deliberately authorized
-`--allow-dirty`.
-
-## Execute
-
-1. Read applicable `AGENTS.md` files and inspect existing implementation before
-   editing.
-2. Use only skills relevant to the task. The shared default skill set is
-   deliberately small; add specialized workflows only when the task calls for
-   them.
-3. Make the smallest coherent change that satisfies the acceptance criteria.
-4. Make routine implementation decisions without asking. Diagnose failures,
-   change approach, and continue.
-5. Rewrite `.agent/PROGRESS.md` after material milestones and before likely
-   compaction. Keep it under roughly 60 lines with current work, completed work,
-   next action, and failed approaches worth avoiding.
-6. Redirect genuinely large output to `.agent/` logs and read back only the
-   useful result or failure tail.
-
-Do not weaken acceptance criteria, modify the active verifier, discard unrelated
-work, or interpret repeated failure as permission to stop.
-
-## Finish or block
-
-Inspect the final diff, ensure every acceptance criterion has evidence, then run:
-
-```bash
-agent-goal complete
-```
-
-If verification fails, continue working. Codex's Stop hook and Pi's goal
-extension continue an active goal when a turn ends prematurely.
-
-Only a genuinely unavailable external dependency may end an incomplete run.
-Record what is unavailable, evidence, attempted alternatives, and the exact
-unblocking action:
-
-```bash
-agent-goal block \
-  --reason "..." \
-  --evidence "..." \
-  --attempted "..." \
-  --unblock "..."
-```
-
-The user can always interrupt the agent or run `agent-goal pause`. Resume paused
-or blocked work with `agent-goal resume`.
+Run `agent-goal complete` after reviewing the diff and acceptance evidence.
+Only then mark a native goal achieved. Invalid/legacy completion markers do not
+prove success. Use `agent-goal block --reason ... --evidence ... --attempted ...
+--unblock ...` only for an unavailable external dependency; ordinary difficulty
+is not a blocker. The user can interrupt or pause; `agent-goal resume` resumes a
+paused/blocked local contract. Use CLI `--help` for command details.

@@ -6,6 +6,9 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 extension="$repo_root/dot_pi/agent/extensions/autonomous-goal.ts"
 test_root="$(mktemp -d)"
 trap 'rm -rf -- "$test_root"' EXIT
+mkdir "$test_root/bin"
+ln -s "$repo_root/dot_local/bin/executable_agent-goal" "$test_root/bin/agent-goal"
+export PATH="$test_root/bin:$PATH"
 
 cat >"$test_root/check.mjs" <<'NODE'
 import assert from "node:assert/strict";
@@ -24,6 +27,7 @@ function repository() {
   execFileSync("git", ["init", "-q", root]);
   const state = join(root, ".agent");
   mkdirSync(state);
+  writeFileSync(join(state, "GOAL.md"), "Test goal\n");
   const verifier = join(state, "VERIFY");
   writeFileSync(verifier, "#!/bin/sh\nexit 0\n");
   chmodSync(verifier, 0o755);
@@ -58,6 +62,11 @@ const tampered = repository();
 writeFileSync(tampered.verifier, "#!/bin/sh\nexit 1\n");
 assert.equal(shouldContinue(tampered.root), false, "changed verifier should stop continuation");
 
+// A valid non-empty pause suppresses continuation too.
+const paused = repository();
+writeFileSync(join(paused.state, "PAUSE"), "manual pause\n");
+assert.equal(shouldContinue(paused.root), false);
+
 const invalid = repository();
 writeFileSync(join(invalid.state, "ACTIVE"), "{bad json");
 assert.equal(shouldContinue(invalid.root), false, "invalid ACTIVE should stop continuation");
@@ -70,7 +79,35 @@ writeFileSync(join(escaped.state, "ACTIVE"), JSON.stringify({
 }));
 assert.equal(shouldContinue(escaped.root), false, "verifier outside repo should stop continuation");
 
-for (const item of [valid, tampered, invalid, escaped]) rmSync(item.root, { recursive: true, force: true });
+// Verify the adapter uses the shared executable, exact arguments, and supplied cwd.
+const fakeBin = mkdtempSync(join(tmpdir(), "pi-goal-cli-"));
+const cli = join(fakeBin, "agent-goal");
+const savedPath = process.env.PATH;
+process.env.PATH = fakeBin;
+function cliResponse(response, exit = 0) {
+  writeFileSync(cli, `#!/bin/sh
+[ "$#" = 2 ] && [ "$1" = status ] && [ "$2" = --json ] || exit 99
+[ "$PWD" = '${valid.root}' ] || exit 98
+printf '%s\\n' '${response}'
+exit ${exit}
+`);
+  chmodSync(cli, 0o755);
+}
+cliResponse('{"status":"active","continue":true}');
+assert.equal(shouldContinue(valid.root), true);
+for (const response of ['{}', 'null', 'invalid', '{"status":"invalid","continue":true}',
+                        '{"status":"active","continue":"true"}']) {
+  cliResponse(response);
+  assert.equal(shouldContinue(valid.root), false);
+}
+cliResponse('{"status":"active","continue":true}', 1);
+assert.equal(shouldContinue(valid.root), false);
+rmSync(cli);
+assert.equal(shouldContinue(valid.root), false, "missing CLI must fail closed");
+process.env.PATH = savedPath;
+rmSync(fakeBin, { recursive: true, force: true });
+
+for (const item of [valid, tampered, invalid, escaped, paused]) rmSync(item.root, { recursive: true, force: true });
 NODE
 
 node --experimental-strip-types "$test_root/check.mjs" "$extension"

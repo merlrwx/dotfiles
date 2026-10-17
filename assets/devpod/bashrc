@@ -4,13 +4,15 @@
 set -o vi
 
 case ":$PATH:" in
-    *":$HOME/.local/bin:"*) ;;
-    *) export PATH="$HOME/.local/bin:$PATH" ;;
-esac
-
-case ":$PATH:" in
     *":$HOME/.pi/agent/bin:"*) ;;
     *) export PATH="$HOME/.pi/agent/bin:$PATH" ;;
+esac
+
+# The workspace's updated Mise must precede any older binary in the image,
+# even when a login profile already appended ~/.local/bin elsewhere on PATH.
+case "$PATH" in
+    "$HOME/.local/bin"|"$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
 esac
 
 # Activate the shared Mise toolset before aliases and completions are loaded.

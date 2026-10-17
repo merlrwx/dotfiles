@@ -14,6 +14,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
+import tarfile
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterator
@@ -126,10 +129,8 @@ def read_manifest(path: Path, *, repo: Path | None = None) -> dict[str, Any]:
             manifest = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise WorkerError(f"Run manifest is invalid: {path}") from error
-        if manifest.get("version") != 1 or not isinstance(manifest.get("tasks"), dict):
+        if not isinstance(manifest, dict) or manifest.get("version") != 1 or not isinstance(manifest.get("tasks"), dict):
             raise WorkerError(f"Unsupported run manifest: {path}")
-        if repo is not None and Path(manifest["repo"]).resolve() != repo:
-            raise WorkerError("This run ID is already used for a different repository.")
         return manifest
     if repo is None:
         raise WorkerError(f"Run manifest not found: {path}")
@@ -151,36 +152,95 @@ def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(manifest, handle, indent=2, sort_keys=True)
             handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
 
-def task_state(task: dict[str, Any]) -> str:
-    worktree = Path(task["worktree"])
-    state = worktree / ".agent"
-    if (state / "COMPLETE").is_file() and not (state / "ACTIVE").exists():
-        verifier = (worktree / str(task.get("verifier", ""))).resolve()
-        try:
-            verifier.relative_to(worktree.resolve())
-        except ValueError:
-            return "verifier_changed"
-        if (
-            verifier.is_file()
-            and os.access(verifier, os.X_OK)
-            and hashlib.sha256(verifier.read_bytes()).hexdigest() == task.get("verifier_sha256")
-        ):
-            return "verified_complete"
-        return "verifier_changed"
-    if (state / "BLOCKED.md").exists():
-        return "blocked"
-    if (state / "PAUSE").exists():
-        return "paused"
-    if (state / "ACTIVE").exists():
-        return "active"
+def goal_status(task: dict[str, Any]) -> dict[str, Any]:
     if task.get("cleaned_at"):
-        return "cleaned"
-    return str(task.get("status", "unknown"))
+        return {"status": "cleaned", "continue": False}
+    if not Path(task["worktree"]).is_dir():
+        return {"status": task.get("status", "missing"), "continue": False}
+    result = run([resolve_agent_goal(), "status", "--json"], cwd=Path(task["worktree"]), check=False)
+    try:
+        data = json.loads(result.stdout)
+    except ValueError as error:
+        raise WorkerError("agent-goal status --json is unavailable or invalid; refusing lifecycle inference.") from error
+    if not isinstance(data, dict) or not isinstance(data.get("continue"), bool):
+        raise WorkerError("Invalid agent-goal status response.")
+    if result.returncode or data.get("error"):
+        return {**data, "status": "invalid"}
+    if data.get("status") in {"active", "paused", "blocked", "complete", "verified_complete"}:
+        if not task.get("goal_sha256") or data.get("goal_sha256") != task["goal_sha256"]:
+            return {**data, "status": "invalid", "continue": False, "error": "Original task goal digest mismatch."}
+        if task.get("goal_activated_at") and not task.get("goal_id"):
+            return {**data, "status": "invalid", "continue": False, "error": "Original activation identity is missing."}
+        if task.get("goal_id") and data.get("goal_id") != task["goal_id"]:
+            return {**data, "status": "invalid", "continue": False, "error": "Original task activation identity mismatch."}
+        if (data.get("continuation") != task.get("continuation")
+                or data.get("verify_inputs") != task.get("verify_inputs", [])):
+            return {**data, "status": "invalid", "continue": False, "error": "Original continuation or verifier inventory mismatch."}
+    return data
+
+
+def task_state(task: dict[str, Any]) -> str:
+    data = goal_status(task)
+    if data["status"] in {"complete", "verified_complete"}:
+        if (not data.get("verifier_sha256") or data.get("verifier") != task.get("verifier")
+                or data["verifier_sha256"] != task.get("verifier_sha256")):
+            return "invalid"
+        return "verified_complete"
+    return str(data["status"])
+
+
+def repository_id(root: Path) -> str:
+    common = Path(git(root, "rev-parse", "--git-common-dir"))
+    return str((root / common).resolve())
+
+
+def worktree_directory(override: str | None) -> Path:
+    value = override
+    if value is None:
+        config = Path(os.environ.get("HERDR_CONFIG_PATH", str(Path(os.environ.get(
+            "XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "herdr/config.toml"))).expanduser()
+        try:
+            settings = tomllib.loads(config.read_text()) if config.is_file() else {}
+            section = settings.get("worktrees", {})
+            if not isinstance(section, dict):
+                raise ValueError("worktrees must be a table")
+            value = section.get("directory", "~/.herdr/worktrees")
+        except (OSError, ValueError) as error:
+            raise WorkerError(f"Invalid Herdr config {config}: {error}") from error
+    if (not isinstance(value, str) or not value.strip()
+            or not (value.startswith("/") or value.startswith("~/"))):
+        raise WorkerError("Worktree root must be a nonempty absolute or ~/ path; relative roots are not allowed.")
+    return Path(value).expanduser().resolve()
+
+
+def policy_arguments(kind: str, profile: str) -> list[str]:
+    if kind == "codex":
+        sandbox = {"full-access": "danger-full-access", "workspace-write": "workspace-write", "read-only": "read-only"}[profile]
+        return ["--sandbox", sandbox, "--config", 'approval_policy="never"', "--enable", "goals"]
+    if kind == "pi" and profile == "full-access":
+        return []  # Pi has no filesystem sandbox; only this explicit profile is supported.
+    raise WorkerError(f"Permission profile {profile} is unsupported for {kind}; no autonomous adapter available.")
+
+
+def update_task(path: Path, name: str, **changes: Any) -> dict[str, Any]:
+    with lock(path.with_suffix(".lock")):
+        manifest = read_manifest(path)
+        task = manifest["tasks"][name]
+        task.update(changes)
+        write_manifest(path, manifest)
+        return task
 
 
 def repo_root(path: str) -> Path:
@@ -189,33 +249,6 @@ def repo_root(path: str) -> Path:
     if git(root, "rev-parse", "--is-bare-repository") == "true":
         raise WorkerError("Workers need a non-bare Git checkout.")
     return root
-
-
-def worktrees(root: Path) -> list[dict[str, str]]:
-    records: list[dict[str, str]] = []
-    current: dict[str, str] = {}
-    for line in git(root, "worktree", "list", "--porcelain").splitlines() + [""]:
-        if line:
-            key, _, value = line.partition(" ")
-            if key in {"worktree", "branch", "HEAD"}:
-                current[key] = value
-        elif current:
-            records.append(current)
-            current = {}
-    return records
-
-
-def list_live_agent_names() -> set[str]:
-    data = herdr_json("agent", "list")
-    payload = result_payload(data)
-    agents = payload.get("agents", data.get("agents", []))
-    if not isinstance(agents, list):
-        raise WorkerError("Herdr's agent list has an unsupported shape.")
-    names = set()
-    for agent in agents:
-        if isinstance(agent, dict) and isinstance(agent.get("name"), str):
-            names.add(agent["name"])
-    return names
 
 
 def resolve_verifier(root: Path, base_commit: str, value: str) -> tuple[str, Path, bool]:
@@ -236,12 +269,15 @@ def resolve_verifier(root: Path, base_commit: str, value: str) -> tuple[str, Pat
 
 
 def resolve_agent_goal() -> str:
-    installed = shutil.which("agent-goal")
-    if installed:
-        return installed
+    override = os.environ.get("AGENT_GOAL_BIN")
+    if override:
+        return str(Path(override).expanduser().resolve())
     source_sibling = Path(__file__).with_name("executable_agent-goal")
     if source_sibling.is_file() and os.access(source_sibling, os.X_OK):
         return str(source_sibling)
+    installed = shutil.which("agent-goal")
+    if installed:
+        return installed
     raise WorkerError("agent-goal is missing from PATH and the dotfiles source directory.")
 
 
@@ -276,6 +312,11 @@ def check_dependencies(
             raise WorkerError(f"Dependency is not in this run: {dependency}")
         if item.get("status") != "integrated" or not item.get("integration_commit"):
             raise WorkerError(f"Dependency is not integrated and verified: {dependency}")
+        dependency_repository = item.get("repository_id")
+        if dependency_repository is None:
+            dependency_repository = repository_id(Path(item["repo"]))
+        if dependency_repository != repository_id(root):
+            continue
         ancestor = run(
             ["git", "-C", str(root), "merge-base", "--is-ancestor", item["integration_commit"], base_commit],
             check=False,
@@ -286,184 +327,402 @@ def check_dependencies(
             )
 
 
-def command_spawn(args: argparse.Namespace) -> int:
-    require_herdr_context()
+def base_file(root: Path, commit: str, name: str) -> dict[str, Any]:
+    candidate = Path(name)
+    if candidate.is_absolute():
+        try:
+            candidate = candidate.relative_to(root)
+        except ValueError as error:
+            raise WorkerError("Verifier inputs must be inside their repository.") from error
+    if ".." in candidate.parts or not candidate.parts:
+        raise WorkerError("Verifier input paths must not contain traversal.")
+    name = str(candidate)
+    entry = git(root, "ls-tree", commit, "--", name).split()
+    if len(entry) < 3 or entry[0] not in {"100644", "100755"} or entry[1] != "blob":
+        raise WorkerError(f"Verifier input must be a regular tracked file at the selected base: {name}")
+    result = subprocess.run(["git", "-C", str(root), "cat-file", "blob", entry[2]], capture_output=True, check=False)
+    if result.returncode:
+        raise WorkerError(f"Cannot read verifier input at selected base: {name}")
+    return {"path": name, "sha256": hashlib.sha256(result.stdout).hexdigest(), "mode": int(entry[0], 8) & 0o777}
+
+
+def require_identity(task: dict[str, Any]) -> None:
+    if not all(task.get(key) for key in ("repository_id", "herdr_name", "repo", "branch", "worktree", "goal_sha256")):
+        raise WorkerError("Legacy manifest lacks repository/resource identity proof; inspect only, no automatic recovery.")
+
+
+def prepare_task(args: argparse.Namespace, manifest: dict[str, Any]) -> dict[str, Any]:
     validate_name(args.name)
-    validate_run_id(args.run_id)
     root = repo_root(args.repo)
     if git_status(root):
         raise WorkerError("The source checkout has changes; start workers from a clean integration commit.")
+    policy_arguments(args.kind, args.permission_profile)
+    if not isinstance(args.depends_on, list) or not all(isinstance(item, str) for item in args.depends_on):
+        raise WorkerError("depends_on must be a list of task names.")
+    base = git(root, "rev-parse", "--verify", f"{args.base}^{{commit}}")
+    verifier, source, copy = resolve_verifier(root, base, args.verify)
+    goal = validate_goal(Path(args.goal).expanduser().resolve().read_text(), args.name)
+    identity = repository_id(root)
+    repo_key = re.sub(r"[^a-zA-Z0-9_-]", "-", Path(identity).parent.name)[:24] + "-" + hashlib.sha256(identity.encode()).hexdigest()[:12]
+    digest = hashlib.sha256(f"{identity}/{args.run_id}/{args.name}".encode()).hexdigest()[:16]
+    resource = f"w-{args.name[:13]}-{digest}"
+    worktree = worktree_directory(args.worktree_root) / repo_key / args.run_id / args.name
+    branch = f"agent/{args.run_id}/{args.name}"
+    if worktree.exists() or git(root, "show-ref", "--verify", f"refs/heads/{branch}", check=False):
+        raise WorkerError("Worktree path or branch already exists; refusing to adopt it.")
+    if args.name in manifest["tasks"]:
+        raise WorkerError(f"Task name is already present in run {args.run_id}: {args.name}")
+    return {
+        "name": args.name, "kind": args.kind, "permission_profile": args.permission_profile,
+        "agent_arguments": policy_arguments(args.kind, args.permission_profile),
+        "continuation": "native" if args.kind == "codex" else "pi",
+        "repo": str(root), "repository_id": identity, "herdr_name": resource,
+        "worktree": str(worktree), "branch": branch, "base_commit": base,
+        "base_ref": args.base, "initial_base_commit": base,
+        "dependencies": args.depends_on, "verifier": verifier,
+        "verify_inputs": [base_file(root, base, item) for item in dict.fromkeys(args.verify_input)],
+        "verifier_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "verifier_content": source.read_text() if copy else None,
+        "goal_text": goal, "goal_sha256": hashlib.sha256(goal.encode()).hexdigest(),
+        "status": "queued", "created_at": now(),
+    }
 
-    base_commit = git(root, "rev-parse", "--verify", f"{args.base}^{{commit}}")
-    selected_verifier, source_verifier, copy_verifier = resolve_verifier(root, base_commit, args.verify)
-    agent_goal = resolve_agent_goal()
-    goal_source = Path(args.goal).expanduser().resolve()
-    if not goal_source.is_file():
-        raise WorkerError(f"Task goal file not found: {goal_source}")
-    goal_text = validate_goal(goal_source.read_text(encoding="utf-8"), args.name)
-    manifest_file = manifest_path(args.run_id)
-    state_dir = manifest_file.parent
 
-    with lock(state_dir / "spawn.lock"):
-        with lock(state_dir / f".{args.run_id}.lock"):
-            manifest = read_manifest(manifest_file, repo=root)
-            if args.name in manifest["tasks"]:
-                raise WorkerError(f"Task name is already present in run {args.run_id}: {args.name}")
-            check_dependencies(manifest, args.depends_on, root, base_commit)
-            active_count = sum(
-                1
-                for task in manifest["tasks"].values()
-                if (Path(task["worktree"]) / ".agent/ACTIVE").exists()
-            )
-            if active_count >= 3:
-                raise WorkerError("This run already has three active autonomous workers.")
-            live_names = list_live_agent_names()
-            if args.name in live_names:
-                raise WorkerError(f"Herdr already has a live agent named {args.name}.")
+def validate_worktree(task: dict[str, Any]) -> None:
+    require_identity(task)
+    root = Path(task["worktree"])
+    if repo_root(str(root)) != root.resolve() or repository_id(root) != task["repository_id"]:
+        raise WorkerError("Worktree repository/path identity mismatch.")
+    if git(root, "symbolic-ref", "--short", "HEAD") != task["branch"]:
+        raise WorkerError("Worktree branch identity mismatch.")
 
-            branch = f"agent/{args.name}"
-            existing_refs = git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes").splitlines()
-            if any(ref == branch or ref.endswith(f"/{branch}") for ref in existing_refs):
-                raise WorkerError(f"Branch already exists locally or remotely; refusing to reuse it: {branch}")
-            if any(item.get("branch") == f"refs/heads/{branch}" for item in worktrees(root)):
-                raise WorkerError(f"A worktree already owns branch {branch}.")
 
-            configured_root = Path(args.worktree_root).expanduser() if args.worktree_root else Path.home() / ".herdr/worktrees"
-            worktree = (configured_root / root.name / args.name).resolve()
+def workspace_path(workspace: dict[str, Any]) -> str | None:
+    return (workspace.get("worktree") or {}).get("checkout_path")
+
+
+def workspace_identity(task: dict[str, Any], *, exclusive: bool = False) -> None:
+    data = result_payload(herdr_json("workspace", "get", task["workspace_id"]))
+    workspace = data.get("workspace", data)
+    actual_id = workspace.get("workspace_id", workspace.get("id"))
+    actual_path = workspace_path(workspace)
+    if actual_id != task["workspace_id"] or not actual_path or Path(actual_path).resolve() != Path(task["worktree"]).resolve():
+        raise WorkerError("Herdr workspace identity mismatch; refusing to operate.")
+    panes = result_payload(herdr_json("pane", "list", "--workspace", task["workspace_id"])).get("panes", [])
+    if not any(pane.get("pane_id") == task["root_pane_id"] for pane in panes):
+        raise WorkerError("Recorded root pane does not belong to the worker workspace.")
+    if exclusive:
+        tabs = result_payload(herdr_json("tab", "list", "--workspace", task["workspace_id"])).get("tabs", [])
+        if len(panes) != 1 or len(tabs) != 1:
+            raise WorkerError("Refusing cleanup of a workspace with additional panes or tabs.")
+
+
+def live_agent(task: dict[str, Any]) -> dict[str, Any] | None:
+    data = result_payload(herdr_json("agent", "list"))
+    agents = data.get("agents")
+    if not isinstance(agents, list):
+        raise WorkerError("Invalid Herdr agent list.")
+    for agent in agents:
+        if agent.get("name") == task["herdr_name"] or agent.get("pane_id") == task.get("root_pane_id"):
+            if (agent.get("name") != task["herdr_name"] or agent.get("pane_id") != task.get("root_pane_id")
+                    or agent.get("agent") != task["kind"] or agent.get("workspace_id") != task.get("workspace_id")
+                    or not agent.get("cwd") or Path(agent["cwd"]).resolve() != Path(task["worktree"]).resolve()):
+                raise WorkerError("Live-session identity mismatch; refusing to operate.")
+            recorded = task.get("agent_identity")
+            if recorded and (recorded.get("terminal_id") != agent.get("terminal_id")
+                             or (recorded.get("agent_session") is not None
+                                 and recorded["agent_session"] != agent.get("agent_session"))):
+                raise WorkerError("Live-session identity mismatch; recorded worker process was replaced.")
+            return agent
+    return None
+
+
+def agent_identity(agent: dict[str, Any]) -> dict[str, Any]:
+    return {key: agent.get(key) for key in ("terminal_id", "agent_session")}
+
+
+def worker_prompt(task: dict[str, Any]) -> str:
+    prompt = (
+        f"Implement only the task in .agent/GOAL.md for worker {task['name']}. "
+        "Read .agent/PROGRESS.md, follow the selected verifier, update progress, "
+        "and run `agent-goal complete` only after it passes. Do not discover or adopt "
+        "sibling goals or tasks, and do not delegate recursively. Inspect Git status and stage only task-owned "
+        "files. Do not push, create a PR, or deploy. Commit only if the task contract explicitly authorizes it."
+    )
+    return "/goal " + prompt if task["continuation"] == "native" else prompt
+
+
+def first_launch_base(task: dict[str, Any]) -> str:
+    if task.get("launch_base_resolved_at") or task.get("create_attempted_at"):
+        return task["base_commit"]
+    root = Path(task["repo"])
+    if git_status(root):
+        raise WorkerError("Queued task source checkout must be clean before first launch.")
+    base = git(root, "rev-parse", "--verify", f"{task['base_ref']}^{{commit}}")
+    if run(["git", "-C", str(root), "merge-base", "--is-ancestor",
+            task["initial_base_commit"], base], check=False).returncode:
+        raise WorkerError("Queued base no longer descends from its recorded initial base.")
+    if task["verifier_content"] is None:
+        selected = base_file(root, base, task["verifier"])
+        if selected["mode"] != 0o755 or selected["sha256"] != task["verifier_sha256"]:
+            raise WorkerError("Queued verifier bytes no longer match the contract.")
+    for item in task.get("verify_inputs", []):
+        if base_file(root, base, item["path"]) != item:
+            raise WorkerError(f"Queued verifier input no longer matches contract: {item['path']}")
+    return base
+
+
+def launch_task(path: Path, name: str, *, resume: bool = False) -> dict[str, Any]:
+    manifest = read_manifest(path)
+    task = manifest["tasks"][name]
+    # Global launch lock is held by the caller, including recovery.
+    require_identity(task)
+    if task.get("agent_arguments") != policy_arguments(task["kind"], task["permission_profile"]):
+        raise WorkerError("Recorded permission arguments differ from the explicit policy.")
+    if task.get("cleaned_at") or task.get("status") in {"integrated", "collected"}:
+        raise WorkerError("Cannot relaunch a collected, integrated, or cleaned task.")
+    if task.get("status") == "prompt_submitted" and not resume:
+        workspace_identity(task)
+        validate_worktree(task)
+        if live_agent(task) is None:
+            raise WorkerError("Recorded worker session is absent; use resume explicitly.")
+        if goal_status(task).get("status") == "invalid":
+            raise WorkerError("Recorded goal identity is invalid; recovery refused.")
+        return task
+    base = first_launch_base(task)
+    check_dependencies(manifest, task["dependencies"], Path(task["repo"]), base)
+    occupied = sum(1 for item in manifest["tasks"].values() if item["name"] != name
+                   and item.get("status") != "queued" and not item.get("cleaned_at")
+                   and task_state(item) not in {"verified_complete", "cleaned"})
+    if occupied >= 3:
+        raise WorkerError("This run already has three active autonomous workers.")
+    if not task.get("launch_base_resolved_at"):
+        task = update_task(path, name, base_commit=base, launch_base_resolved_at=now())
+    try:
+        worktree = Path(task["worktree"])
+        if not task.get("workspace_id"):
             if worktree.exists():
-                raise WorkerError(f"Worktree path already exists; refusing to reuse it: {worktree}")
-            if any(Path(item["worktree"]).resolve() == worktree for item in worktrees(root)):
-                raise WorkerError(f"A Git worktree already owns path {worktree}.")
-
-            manifest["tasks"][args.name] = {
-                "name": args.name,
-                "kind": args.kind,
-                "repo": str(root),
-                "worktree": str(worktree),
-                "branch": branch,
-                "base_commit": base_commit,
-                "dependencies": args.depends_on,
-                "verifier": selected_verifier,
-                "status": "preparing",
-                "created_at": now(),
-            }
-            write_manifest(manifest_file, manifest)
-
-        try:
-            created = herdr_json(
-                "worktree", "create",
-                "--cwd", str(root),
-                "--branch", branch,
-                "--base", base_commit,
-                "--path", str(worktree),
-                "--label", args.name,
-                "--no-focus",
-            )
-            payload = result_payload(created)
-            workspace = payload.get("workspace", {})
-            root_pane = payload.get("root_pane", {})
-            workspace_id = workspace.get("workspace_id", workspace.get("id")) if isinstance(workspace, dict) else None
-            pane_id = root_pane.get("pane_id", root_pane.get("id")) if isinstance(root_pane, dict) else None
+                if not task.get("create_attempted_at"):
+                    raise WorkerError("Unowned worktree appeared before launch; refusing recovery.")
+                validate_worktree(task)
+                # A lost create response may already have opened this path. Reconcile
+                # against Herdr's inventory; never open a second workspace blindly.
+                entries = result_payload(herdr_json("workspace", "list")).get("workspaces", [])
+                matches = [item for item in entries if workspace_path(item)
+                           and Path(workspace_path(item)).resolve() == worktree.resolve()]
+                if len(matches) != 1:
+                    raise WorkerError("Cannot uniquely recover Herdr workspace for existing worktree.")
+                workspace = matches[0]
+                workspace_id = workspace.get("workspace_id", workspace.get("id"))
+                panes = result_payload(herdr_json("pane", "list", "--workspace", workspace_id)).get("panes", [])
+                if len(panes) != 1:
+                    raise WorkerError("Cannot uniquely recover worker root pane.")
+                pane_id = panes[0].get("pane_id", panes[0].get("id"))
+            else:
+                if task.get("status") != "queued":
+                    # No directory after an interrupted create is safe only if no branch was created.
+                    if git(Path(task["repo"]), "show-ref", "--verify", f"refs/heads/{task['branch']}", check=False):
+                        raise WorkerError("Partial launch branch exists without its worktree; manual recovery required.")
+                task = update_task(path, name, status="preparing", create_attempted_at=now())
+                created = result_payload(herdr_json(
+                    "worktree", "create", "--cwd", task["repo"], "--branch", task["branch"],
+                    "--base", task["base_commit"], "--path", task["worktree"],
+                    "--label", task["herdr_name"], "--no-focus"))
+                workspace = created.get("workspace", {})
+                pane = created.get("root_pane", {})
+                workspace_id = workspace.get("workspace_id", workspace.get("id"))
+                pane_id = pane.get("pane_id", pane.get("id"))
             if not isinstance(workspace_id, str) or not isinstance(pane_id, str):
-                raise WorkerError("Herdr did not return workspace and root pane IDs; inspect its worktree before retrying.")
-
-            with lock(state_dir / f".{args.run_id}.lock"):
-                manifest = read_manifest(manifest_file, repo=root)
-                task = manifest["tasks"][args.name]
-                task.update(
-                    {
-                        "workspace_id": workspace_id,
-                        "root_pane_id": pane_id,
-                        "status": "worktree_created",
-                        "worktree_created_at": now(),
-                    }
-                )
-                write_manifest(manifest_file, manifest)
-
-            state = worktree / ".agent"
-            if state.exists() and any((state / marker).exists() for marker in ("ACTIVE", "COMPLETE", "PAUSE", "BLOCKED.md")):
-                raise WorkerError(f"The new worktree already contains goal lifecycle state: {state}")
-            state.mkdir(parents=True, exist_ok=True)
-            verifier_path = worktree / selected_verifier
-            if copy_verifier:
-                verifier_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_verifier, verifier_path)
-                verifier_path.chmod(0o755)
-            if not verifier_path.is_file() or not os.access(verifier_path, os.X_OK):
-                raise WorkerError(f"Verifier is not executable in the new worktree: {selected_verifier}")
-            verifier_digest = hashlib.sha256(verifier_path.read_bytes()).hexdigest()
-            (state / "GOAL.md").write_text(goal_text, encoding="utf-8")
-            (state / "PROGRESS.md").write_text(
-                "# Current\n\nWorker launched; inspect this task contract and proceed.\n\n"
-                "# Completed\n\n- Goal harness activated.\n\n# Next\n\nImplement and verify this task only.\n",
-                encoding="utf-8",
+                raise WorkerError("Herdr did not return workspace and root pane IDs.")
+            task = update_task(path, name, workspace_id=workspace_id, root_pane_id=pane_id, status="worktree_created")
+        validate_worktree(task)
+        workspace_identity(task)
+        agent = live_agent(task)
+        if agent is not None and agent.get("agent_status") != "working":
+            raise WorkerError(
+                "Cannot attest effective permission policy of an already-live idle/blocked session. "
+                "Exit the owned agent, then retry/resume to launch a fresh process with recorded flags."
             )
-            run([agent_goal, "start", "--verify", selected_verifier], cwd=worktree)
-            with lock(state_dir / f".{args.run_id}.lock"):
-                manifest = read_manifest(manifest_file, repo=root)
-                task = manifest["tasks"][args.name]
-                task.update(
-                    {
-                        "verifier": selected_verifier,
-                        "verifier_sha256": verifier_digest,
-                        "status": "goal_activated",
-                        "goal_activated_at": now(),
-                    }
-                )
-                write_manifest(manifest_file, manifest)
+        state = worktree / ".agent"
+        if not task.get("goal_activated_at"):
+            state.mkdir(exist_ok=True)
+            verifier = worktree / task["verifier"]
+            if not (state / "ACTIVE").exists():
+                if any((state / marker).exists() for marker in ("COMPLETE", "PAUSE", "BLOCKED.md")):
+                    raise WorkerError("Unexpected lifecycle state in new worktree.")
+                if task["verifier_content"] is not None:
+                    verifier.parent.mkdir(parents=True, exist_ok=True)
+                    verifier.write_text(task["verifier_content"])
+                    verifier.chmod(0o755)
+                if hashlib.sha256(verifier.read_bytes()).hexdigest() != task["verifier_sha256"]:
+                    raise WorkerError("Verifier differs from queued contract.")
+                (state / "GOAL.md").write_text(task["goal_text"])
+                (state / "PROGRESS.md").write_text("# Current\n\nWorker launched; implement only the assigned contract.\n")
+                input_args = []
+                for item in task.get("verify_inputs", []):
+                    source = worktree / item["path"]
+                    if source.is_symlink() or hashlib.sha256(source.read_bytes()).hexdigest() != item["sha256"]:
+                        raise WorkerError("Verifier input changed before goal activation.")
+                    input_args.extend(["--verify-input", item["path"]])
+                run([resolve_agent_goal(), "start", "--verify", task["verifier"],
+                     "--continuation", task["continuation"], *input_args], cwd=worktree)
+            status = goal_status(task)
+            if (status.get("status") != "active" or status.get("verifier") != task["verifier"]
+                    or status.get("verifier_sha256") != task["verifier_sha256"]):
+                raise WorkerError("Goal activation identity mismatch.")
+            task = update_task(path, name, goal_activated_at=now(), goal_id=status["goal_id"], status="goal_activated")
+        status = goal_status(task)
+        if status["status"] in {"paused", "blocked"} and resume:
+            run([resolve_agent_goal(), "resume"], cwd=worktree)
+        elif status["status"] != "active":
+            raise WorkerError(f"Cannot launch goal in state {status['status']}.")
+        if agent is None:
+            if task.get("prompt_attempted_at") and not resume:
+                raise WorkerError("Prior prompt may have run; use resume explicitly after inspection.")
+            task = update_task(path, name, start_attempted_at=now(), agent_identity=None)
+            run(["herdr", "agent", "start", task["herdr_name"], "--kind", task["kind"],
+                 "--pane", task["root_pane_id"], "--", *task["agent_arguments"]])
+            agent = live_agent(task)
+            if agent is None:
+                raise WorkerError("Started agent is missing from Herdr inventory.")
+            task = update_task(path, name, status="agent_started", agent_identity=agent_identity(agent))
+        if task.get("prompt_attempted_at"):
+            if agent.get("agent_status") == "working":
+                return update_task(path, name, status="prompt_submitted")
+            if not resume:
+                raise WorkerError("Prompt delivery is uncertain; inspect then explicitly resume.")
+        if agent.get("agent_status") not in {"idle", "done"}:
+            raise WorkerError("Worker is not ready for a prompt; inspect its session before retry.")
+        task = update_task(path, name, prompt_attempted_at=now())
+        run(["herdr", "agent", "prompt", task["herdr_name"], worker_prompt(task)])
+        current = live_agent(task)
+        return update_task(path, name, status="prompt_submitted", launched_at=now(), error=None,
+                           agent_identity=agent_identity(current) if current else task.get("agent_identity"))
+    except Exception as error:
+        update_task(path, name, status="launch_failed", error=str(error))
+        raise
 
-            start_command = [
-                "herdr", "agent", "start", args.name,
-                "--kind", args.kind, "--pane", pane_id,
-            ]
-            if args.kind == "codex":
-                # Herdr starts a separate Codex CLI process, which does not
-                # inherit the coordinator TUI's selected permission mode.
-                # Match the full-access mode used by the host workflow.
-                start_command.extend([
-                    "--", "--sandbox", "danger-full-access",
-                    "--config", 'approval_policy="never"',
-                ])
-            run(start_command)
-            with lock(state_dir / f".{args.run_id}.lock"):
-                manifest = read_manifest(manifest_file, repo=root)
-                task = manifest["tasks"][args.name]
-                task["status"] = "agent_started"
-                task["agent_started_at"] = now()
-                write_manifest(manifest_file, manifest)
-            prompt = (
-                f"Implement only the task in .agent/GOAL.md for worker {args.name}. "
-                "Read .agent/PROGRESS.md, follow the selected verifier, update progress, "
-                "and run `agent-goal complete` only after it passes. Do not discover or adopt "
-                "sibling goals or tasks, and do not delegate recursively. Inspect Git status and stage only task-owned "
-                "files. Do not push, create a PR, or deploy. Commit only if the task contract "
-                "explicitly authorizes it."
-            )
-            run(["herdr", "agent", "prompt", args.name, prompt])
-            with lock(state_dir / f".{args.run_id}.lock"):
-                manifest = read_manifest(manifest_file, repo=root)
-                task = manifest["tasks"][args.name]
-                task.update(
-                    {
-                        "verifier": selected_verifier,
-                        "verifier_sha256": verifier_digest,
-                        "status": "prompt_submitted",
-                        "launched_at": now(),
-                    }
-                )
-                write_manifest(manifest_file, manifest)
-            print(json.dumps(task, indent=2, sort_keys=True))
-            return 0
-        except Exception as error:
-            with lock(state_dir / f".{args.run_id}.lock"):
-                manifest = read_manifest(manifest_file, repo=root)
-                task = manifest["tasks"].get(args.name, {})
-                task["status"] = "launch_failed"
-                task["error"] = str(error)
-                task["updated_at"] = now()
-                manifest["tasks"][args.name] = task
-                write_manifest(manifest_file, manifest)
-            raise
+
+def command_spawn(args: argparse.Namespace) -> int:
+    require_herdr_context()
+    path = manifest_path(args.run_id)
+    with lock(path.parent / "spawn.lock"):
+        with lock(path.with_suffix(".lock")):
+            manifest = read_manifest(path, repo=repo_root(args.repo))
+            task = prepare_task(args, manifest)
+            check_dependencies(manifest, task["dependencies"], Path(task["repo"]), task["base_commit"])
+            manifest["tasks"][args.name] = task
+            write_manifest(path, manifest)
+        task = launch_task(path, args.name)
+    print(json.dumps(task, indent=2))
+    return 0
+
+
+def command_retry(args: argparse.Namespace) -> int:
+    require_herdr_context()
+    path, _, _ = find_task(args.name, args.run_id)
+    with lock(path.parent / "spawn.lock"):
+        task = launch_task(path, args.name, resume=args.command == "resume")
+    print(json.dumps(task, indent=2))
+    return 0
+
+
+def command_discover(args: argparse.Namespace) -> int:
+    parent = Path(args.parent).expanduser().resolve()
+    records = {}
+    # Deliberately bounded: only the supplied parent and its immediate children.
+    for candidate in [parent, *sorted(parent.iterdir())]:
+        if not candidate.is_dir():
+            continue
+        probe = run(["git", "-C", str(candidate), "rev-parse", "--show-toplevel"], check=False)
+        if probe.returncode or Path(probe.stdout.strip()).resolve() != candidate:
+            continue
+        root = repo_root(str(candidate))
+        records.setdefault(repository_id(root), {"repo": str(root), "repository_id": repository_id(root)})
+    print(json.dumps(list(records.values()), indent=2))
+    return 0
+
+
+def validate_plan_task(entry: Any) -> None:
+    strings = {"name", "repo", "goal", "base", "kind", "permission_profile", "verify"}
+    allowed = strings | {"depends_on", "verify_input", "worktree_root"}
+    if not isinstance(entry, dict):
+        raise WorkerError("Every plan task must be an object.")
+    unknown = set(entry) - allowed
+    if unknown:
+        raise WorkerError(f"Unknown plan task keys: {', '.join(sorted(unknown))}")
+    if not {"name", "goal"} <= set(entry):
+        raise WorkerError("Every plan task requires name and goal.")
+    for key in strings & set(entry):
+        if not isinstance(entry[key], str) or not entry[key].strip():
+            raise WorkerError(f"Plan task {key} must be a nonempty string.")
+    for key in ("depends_on", "verify_input"):
+        value = entry.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+            raise WorkerError(f"Plan task {key} must be a list of nonempty strings.")
+    if entry.get("permission_profile", "full-access") not in {"full-access", "workspace-write", "read-only"}:
+        raise WorkerError("Unknown permission_profile; choose full-access, workspace-write, or read-only.")
+    if "worktree_root" in entry and entry["worktree_root"] is not None:
+        worktree_directory(entry["worktree_root"])
+    validate_name(entry["name"])
+    for name in entry.get("depends_on", []):
+        validate_name(name)
+
+
+def command_plan(args: argparse.Namespace) -> int:
+    path = manifest_path(args.run_id)
+    specification = json.loads(Path(args.file).read_text())
+    if not isinstance(specification, dict) or not isinstance(specification.get("tasks"), list) or not specification["tasks"]:
+        raise WorkerError("Plan must contain a nonempty tasks list.")
+    entries = specification["tasks"]
+    for entry in entries:
+        validate_plan_task(entry)
+    with lock(path.parent / "spawn.lock"), lock(path.with_suffix(".lock")):
+        manifest = read_manifest(path, repo=repo_root(entries[0].get("repo", ".")))
+        for entry in entries:
+            options = dict(repo=".", base="HEAD", kind="codex", permission_profile="full-access",
+                           verify="scripts/verify", verify_input=[], depends_on=[], worktree_root=None)
+            options.update(entry)
+            options["run_id"] = args.run_id
+            task = prepare_task(argparse.Namespace(**options), manifest)
+            manifest["tasks"][task["name"]] = task
+        def visit(name: str, stack: set[str]) -> None:
+            if name in stack:
+                raise WorkerError("Plan contains a dependency cycle.")
+            if name not in manifest["tasks"]:
+                raise WorkerError(f"Unknown dependency: {name}")
+            for dependency in manifest["tasks"][name]["dependencies"]:
+                visit(dependency, stack | {name})
+        for name in manifest["tasks"]:
+            visit(name, set())
+        write_manifest(path, manifest)
+    print(json.dumps(manifest, indent=2))
+    return 0
+
+
+def command_launch(args: argparse.Namespace) -> int:
+    require_herdr_context()
+    path = manifest_path(args.run_id)
+    launched = []
+    with lock(path.parent / "spawn.lock"):
+        manifest = read_manifest(path)
+        occupied = sum(1 for task in manifest["tasks"].values() if task.get("status") != "queued"
+                       and not task.get("cleaned_at") and task_state(task) != "verified_complete")
+        for task in manifest["tasks"].values():
+            if occupied >= args.jobs:
+                break
+            if task["status"] != "queued":
+                continue
+            try:
+                check_dependencies(manifest, task["dependencies"], Path(task["repo"]), first_launch_base(task))
+            except WorkerError as error:
+                update_task(path, task["name"], queue_error=str(error))
+                continue
+            update_task(path, task["name"], queue_error=None)
+            launched.append(launch_task(path, task["name"]))
+            occupied += 1
+    print(json.dumps(launched, indent=2))
+    return 0
 
 
 def find_task(name: str, run_id: str | None) -> tuple[Path, dict[str, Any], dict[str, Any]]:
@@ -502,6 +761,7 @@ def command_status(args: argparse.Namespace) -> int:
                     "workspace_id": task.get("workspace_id"),
                     "dependencies": task.get("dependencies", []),
                     "integrated": task.get("status") == "integrated",
+                    "queue_error": task.get("queue_error"),
                 }
             )
     print(json.dumps(records, indent=2, sort_keys=True))
@@ -512,17 +772,23 @@ def command_inspect(args: argparse.Namespace) -> int:
     require_herdr_context()
     _, manifest, task = find_task(args.name, args.run_id)
     root = Path(task["worktree"])
+    try:
+        lifecycle = goal_status(task)
+    except WorkerError as error:
+        lifecycle = {"status": "invalid", "continue": False, "error": str(error)}
     response: dict[str, Any] = {
         "run_id": manifest["run_id"],
         "task": task,
-        "goal_state": task_state(task),
+        "goal_state": lifecycle["status"],
+        "lifecycle": lifecycle,
+        "identity_proven": all(task.get(key) for key in ("repository_id", "herdr_name")),
         "progress": (root / ".agent/PROGRESS.md").read_text(encoding="utf-8")
         if (root / ".agent/PROGRESS.md").exists() else "",
         "git_status": git_status(root) if root.exists() else "worktree missing",
     }
     for command_name, command in (
-        ("agent", ["herdr", "agent", "get", task["name"]]),
-        ("output", ["herdr", "agent", "read", task["name"], "--source", "recent-unwrapped", "--lines", "100"]),
+        ("agent", ["herdr", "agent", "get", task.get("herdr_name", task["name"])]),
+        ("output", ["herdr", "agent", "read", task.get("herdr_name", task["name"]), "--source", "recent-unwrapped", "--lines", "100"]),
     ):
         result = run(command, check=False)
         response[command_name] = result.stdout.strip() if result.returncode == 0 else result.stderr.strip()
@@ -539,17 +805,11 @@ def collect_patch(task: dict[str, Any], state_path: Path) -> tuple[str, list[str
         raise WorkerError("Cannot collect a task until .agent/COMPLETE proves its verifier passed.")
     if not worktree.is_dir():
         raise WorkerError("Worker worktree is missing.")
-    verifier = (worktree / task["verifier"]).resolve()
-    try:
-        verifier.relative_to(worktree.resolve())
-    except ValueError as error:
-        raise WorkerError("The recorded task verifier escaped its worktree.") from error
-    if not verifier.is_file() or not os.access(verifier, os.X_OK):
-        raise WorkerError("The task verifier is missing or not executable after completion.")
-    verifier_digest = hashlib.sha256(verifier.read_bytes()).hexdigest()
-    if verifier_digest != task.get("verifier_sha256"):
-        raise WorkerError("The task verifier changed after activation; collection refused.")
+    validate_worktree(task)
+    verifier = worktree / task["verifier"]
     run([str(verifier)], cwd=worktree)
+    if task_state(task) != "verified_complete":
+        raise WorkerError("Goal validation changed during collection.")
     with tempfile.TemporaryDirectory(prefix="agent-worker-index-") as temporary_dir:
         index_path = Path(temporary_dir) / "index"
         env = os.environ.copy()
@@ -571,11 +831,13 @@ def collect_patch(task: dict[str, Any], state_path: Path) -> tuple[str, list[str
 
 def command_collect(args: argparse.Namespace) -> int:
     path, manifest, task = find_task(args.name, args.run_id)
-    patch_path = path.parent / manifest["run_id"] / f"{args.name}.patch"
-    patch, changed = collect_patch(task, patch_path)
-    with lock(path.parent / f".{manifest['run_id']}.lock"):
+    with lock(path.with_suffix(".lock")):
         manifest = read_manifest(path)
         task = manifest["tasks"][args.name]
+        if task.get("status") == "integrated" or task.get("cleanup_proof"):
+            raise WorkerError("Cannot recollect an integrated task.")
+        patch_path = path.parent / manifest["run_id"] / f"{args.name}.patch"
+        patch, changed = collect_patch(task, patch_path)
         task["patch_path"] = str(patch_path)
         task["patch_sha256"] = hashlib.sha256(patch.encode()).hexdigest()
         task["changed_paths"] = changed
@@ -595,7 +857,14 @@ def command_collect(args: argparse.Namespace) -> int:
 
 
 def command_integrated(args: argparse.Namespace) -> int:
-    path, manifest, task = find_task(args.name, args.run_id)
+    path, _, _ = find_task(args.name, args.run_id)
+    with lock(path.with_suffix(".lock")):
+        return integrate_locked(args, path)
+
+
+def integrate_locked(args: argparse.Namespace, path: Path) -> int:
+    manifest = read_manifest(path)
+    task = manifest["tasks"][args.name]
     if task_state(task) != "verified_complete":
         raise WorkerError("A worker must pass agent-goal verification before integration.")
     patch_path = Path(task.get("patch_path", ""))
@@ -603,13 +872,7 @@ def command_integrated(args: argparse.Namespace) -> int:
         raise WorkerError("Collect the verified worker patch before marking it integrated.")
     project_root = Path(task["repo"])
     root = repo_root(args.checkout)
-    project_git_dir = Path(git(project_root, "rev-parse", "--git-common-dir"))
-    integration_git_dir = Path(git(root, "rev-parse", "--git-common-dir"))
-    if not project_git_dir.is_absolute():
-        project_git_dir = (project_root / project_git_dir).resolve()
-    if not integration_git_dir.is_absolute():
-        integration_git_dir = (root / integration_git_dir).resolve()
-    if project_git_dir.resolve() != integration_git_dir.resolve():
+    if repository_id(root) != task["repository_id"]:
         raise WorkerError("Integration checkout does not belong to the worker's Git repository.")
     integration_commit = git(root, "rev-parse", "--verify", f"{args.at}^{{commit}}")
     if git(root, "rev-parse", "HEAD") != integration_commit:
@@ -622,15 +885,20 @@ def command_integrated(args: argparse.Namespace) -> int:
     )
     if ancestor.returncode:
         raise WorkerError("The integration commit does not descend from the worker's recorded base.")
-    patch = patch_path.read_text(encoding="utf-8")
+    patch_bytes = patch_path.read_bytes()
+    if hashlib.sha256(patch_bytes).hexdigest() != task.get("patch_sha256"):
+        raise WorkerError("Collected patch digest mismatch; integration refused.")
+    patch = patch_bytes.decode("utf-8")
     if patch:
         with tempfile.TemporaryDirectory(prefix="agent-worker-integrated-") as temporary_dir:
+            snapshot = Path(temporary_dir) / "patch"
+            snapshot.write_bytes(patch_bytes)
             index_path = Path(temporary_dir) / "index"
             env = os.environ.copy()
             env["GIT_INDEX_FILE"] = str(index_path)
             run(["git", "-C", str(root), "read-tree", integration_commit], env=env)
             checked = run(
-                ["git", "-C", str(root), "apply", "--cached", "--reverse", "--check", str(patch_path)],
+                ["git", "-C", str(root), "apply", "--cached", "--reverse", "--check", str(snapshot)],
                 env=env,
                 check=False,
             )
@@ -645,19 +913,20 @@ def command_integrated(args: argparse.Namespace) -> int:
     if not verify_path.is_file() or not os.access(verify_path, os.X_OK):
         raise WorkerError(f"Integration verifier is missing or not executable: {verify_relative}")
     run([str(verify_path)], cwd=root)
-    if git_status(root):
-        raise WorkerError("Integration verification left working-tree changes; integration was not recorded.")
+    if git_status(root) or git(root, "rev-parse", "HEAD") != integration_commit:
+        raise WorkerError("Integration verification changed checkout state; integration was not recorded.")
     verify_digest = hashlib.sha256(verify_path.read_bytes()).hexdigest()
-    with lock(path.parent / f".{manifest['run_id']}.lock"):
-        manifest = read_manifest(path)
-        task = manifest["tasks"][args.name]
-        task["status"] = "integrated"
-        task["integration_commit"] = integration_commit
-        task["integration_checkout"] = str(root)
-        task["integration_verifier"] = str(verify_relative)
-        task["integration_verifier_sha256"] = verify_digest
-        task["integrated_at"] = now()
-        write_manifest(path, manifest)
+    if patch_path.read_bytes() != patch_bytes:
+        raise WorkerError("Collected patch changed during integration verification.")
+    manifest = read_manifest(path)
+    task = manifest["tasks"][args.name]
+    task["status"] = "integrated"
+    task["integration_commit"] = integration_commit
+    task["integration_checkout"] = str(root)
+    task["integration_verifier"] = str(verify_relative)
+    task["integration_verifier_sha256"] = verify_digest
+    task["integrated_at"] = now()
+    write_manifest(path, manifest)
     print(json.dumps({
         "name": args.name,
         "status": "integrated",
@@ -668,37 +937,101 @@ def command_integrated(args: argparse.Namespace) -> int:
     return 0
 
 
+def tree_fingerprint(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if relative.parts[0] == ".git":
+            continue
+        mode = path.lstat().st_mode
+        digest.update(str(relative).encode() + b"\0" + str(mode).encode() + b"\0")
+        if stat.S_ISLNK(mode):
+            digest.update(os.readlink(path).encode())
+        elif stat.S_ISREG(mode):
+            digest.update(path.read_bytes())
+        elif not stat.S_ISDIR(mode):
+            raise WorkerError(f"Cannot archive special file safely: {relative}")
+    return digest.hexdigest()
+
+
 def command_cleanup(args: argparse.Namespace) -> int:
     require_herdr_context()
-    path, manifest, task = find_task(args.name, args.run_id)
-    worktree = Path(task["worktree"])
-    if not worktree.exists():
-        raise WorkerError("Worker worktree is already missing; manifest retained for recovery.")
-    current_goal_state = task_state(task)
-    if (worktree / ".agent/ACTIVE").exists():
-        raise WorkerError("Refusing cleanup while the worker's autonomous goal is still active.")
-    if task.get("status") == "integrated" and current_goal_state != "verified_complete":
-        raise WorkerError("Refusing cleanup: integration is recorded without a completed goal verifier.")
-    if git_status(worktree):
-        raise WorkerError("Refusing cleanup: worker worktree has dirty or untracked changes.")
-    changed = run(
-        ["git", "-C", str(worktree), "diff", "--quiet", task["base_commit"], "HEAD"],
-        check=False,
-    )
-    if changed.returncode and task.get("status") != "integrated":
-        raise WorkerError("Refusing cleanup: branch changes have not been marked integrated.")
-    if not changed.returncode and task.get("status") != "integrated" and not args.abandon:
-        raise WorkerError("Task is not integrated; pass --abandon only for a pristine abandoned worker.")
-    workspace_id = task.get("workspace_id")
-    if not workspace_id:
-        raise WorkerError("Manifest has no Herdr workspace ID; inspect the workspace before cleanup.")
-    run(["herdr", "worktree", "remove", "--workspace", workspace_id])
-    with lock(path.parent / f".{manifest['run_id']}.lock"):
+    path, _, _ = find_task(args.name, args.run_id)
+    with lock(path.parent / "spawn.lock"), lock(path.with_suffix(".lock")):
         manifest = read_manifest(path)
         task = manifest["tasks"][args.name]
+        require_identity(task)
+        if task.get("cleaned_at"):
+            print(json.dumps({"name": args.name, "cleaned": True}))
+            return 0
+        worktree = Path(task["worktree"])
+        proof = task.get("cleanup_proof")
+        if not worktree.exists():
+            if not proof or hashlib.sha256(Path(proof["archive"]).read_bytes()).hexdigest() != proof["archive_sha256"]:
+                raise WorkerError("Missing worktree without durable pre-removal proof; refusing cleanup recovery.")
+            # A prior removal may have succeeded before its response was recorded.
+            # Never issue a second destructive call against a potentially reused workspace ID.
+            entries = result_payload(herdr_json("workspace", "list")).get("workspaces", [])
+            if any(item.get("workspace_id", item.get("id")) == task["workspace_id"] for item in entries):
+                raise WorkerError("Worktree missing but workspace still present; manual reconciliation required.")
+        else:
+            validate_worktree(task)
+            workspace_identity(task, exclusive=True)
+            agent = live_agent(task)
+            if agent and agent.get("agent_status") not in {"idle", "done"}:
+                raise WorkerError("Refusing cleanup of a live working or uncertain session.")
+            state = task_state(task)
+            if state in {"active", "paused", "blocked", "invalid"}:
+                raise WorkerError("Refusing cleanup while the goal is active or unverified.")
+            before = tree_fingerprint(worktree)
+            if task.get("status") == "integrated":
+                if state != "verified_complete":
+                    raise WorkerError("Integrated cleanup requires verified completion.")
+                with tempfile.TemporaryDirectory(prefix="agent-worker-cleanup-") as temporary:
+                    patch, _ = collect_patch(task, Path(temporary) / "current.patch")
+                if hashlib.sha256(patch.encode()).hexdigest() != task.get("patch_sha256"):
+                    raise WorkerError("Current worker patch differs from the exact integrated patch.")
+                if hashlib.sha256(Path(task["patch_path"]).read_bytes()).hexdigest() != task["patch_sha256"]:
+                    raise WorkerError("Collected patch digest mismatch.")
+            elif not args.abandon or git_status(worktree) or git(worktree, "diff", task["base_commit"], "HEAD"):
+                raise WorkerError("Only an integrated worker or pristine --abandon worker can be cleaned.")
+            # Preserve ALL data, including ignored files and lifecycle evidence, before
+            # using Herdr's force removal for an exactly integrated uncommitted patch.
+            archive_dir = path.parent / manifest["run_id"] / "archives"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            descriptor, archive_name = tempfile.mkstemp(prefix=f"{args.name}-", suffix=".tar", dir=archive_dir)
+            os.close(descriptor)
+            archive = Path(archive_name)
+            with tarfile.open(archive, "w", dereference=False) as output:
+                for child in sorted(worktree.iterdir()):
+                    if child.name != ".git":
+                        output.add(child, arcname=child.name)
+            with archive.open("rb") as handle:
+                os.fsync(handle.fileno())
+            archive_fd = os.open(archive_dir, os.O_RDONLY)
+            try:
+                os.fsync(archive_fd)
+            finally:
+                os.close(archive_fd)
+            if tree_fingerprint(worktree) != before:
+                raise WorkerError("Worker files changed during cleanup archive; refusing removal.")
+            proof = {"archive": str(archive), "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                     "tree_sha256": before, "patch_sha256": task.get("patch_sha256"), "created_at": now()}
+            task["cleanup_proof"] = proof
+            write_manifest(path, manifest)
+            if tree_fingerprint(worktree) != before:
+                raise WorkerError("Worker files changed before removal; refusing cleanup.")
+            run(["herdr", "worktree", "remove", "--workspace", task["workspace_id"], "--force"])
+            if worktree.exists():
+                raise WorkerError("Herdr returned success but worktree still exists.")
         task["cleaned_at"] = now()
         write_manifest(path, manifest)
-    print(json.dumps({"name": args.name, "cleaned": True, "branch_retained": task["branch"]}, indent=2))
+        # Remove only empty generated containers, never the configured root.
+        for directory in (worktree.parent, worktree.parent.parent):
+            with contextlib.suppress(OSError):
+                directory.rmdir()
+    print(json.dumps({"name": args.name, "cleaned": True, "branch_retained": task["branch"],
+                      "archive": proof["archive"]}, indent=2))
     return 0
 
 
@@ -715,8 +1048,27 @@ def parser() -> argparse.ArgumentParser:
     spawn.add_argument("--depends-on", action="append", default=[])
     spawn.add_argument("--base", default="HEAD")
     spawn.add_argument("--verify", default="scripts/verify")
+    spawn.add_argument("--verify-input", action="append", default=[], help="pin an additional tracked verifier input from the selected base")
     spawn.add_argument("--worktree-root")
+    spawn.add_argument("--permission-profile", choices=["full-access", "workspace-write", "read-only"], default="full-access")
     spawn.set_defaults(handler=command_spawn)
+
+    for verb in ("retry", "resume"):
+        retry = sub.add_parser(verb, help="recover a recorded worker using its explicit permission policy")
+        retry.add_argument("name")
+        retry.add_argument("--run-id", required=True)
+        retry.set_defaults(handler=command_retry)
+    discover = sub.add_parser("discover", help="deduplicate repositories in a parent and immediate children")
+    discover.add_argument("parent")
+    discover.set_defaults(handler=command_discover)
+    plan = sub.add_parser("plan", help="durably queue tasks from a JSON tasks list")
+    plan.add_argument("--run-id", required=True)
+    plan.add_argument("--file", required=True)
+    plan.set_defaults(handler=command_plan)
+    launch = sub.add_parser("launch", help="launch ready queued tasks")
+    launch.add_argument("--run-id", required=True)
+    launch.add_argument("--jobs", type=int, choices=(1, 2, 3), default=2)
+    launch.set_defaults(handler=command_launch)
 
     status = sub.add_parser("status", help="summarize saved worker runs")
     status.add_argument("--run-id")

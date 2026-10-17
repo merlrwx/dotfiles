@@ -7,6 +7,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import stat
+import uuid
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -89,46 +92,154 @@ def ensure_local_exclude(root: Path) -> None:
 
 
 def confined_path(root: Path, value: str) -> tuple[Path, str]:
+    if not isinstance(value, str) or not value:
+        raise GoalError("expected a non-empty repository path")
     candidate = Path(value)
-    path = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    path = candidate if candidate.is_absolute() else root / candidate
     try:
         relative = path.relative_to(root)
     except ValueError as error:
-        raise GoalError("the verifier must be inside the repository") from error
+        raise GoalError("path must be inside the repository") from error
+    if not relative.parts or ".." in relative.parts:
+        raise GoalError("path must be inside the repository without traversal")
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise GoalError(f"symlinks are not allowed: {relative}")
     return path, str(relative)
 
 
-def load_active(root: Path) -> dict[str, object]:
-    active = state_dir(root) / "ACTIVE"
-    if not active.is_file():
-        raise GoalError("no autonomous goal is active")
-    try:
-        data = json.loads(active.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise GoalError(".agent/ACTIVE is invalid") from error
-    if data.get("version") != 1 or not isinstance(data.get("verifier"), str):
-        raise GoalError(".agent/ACTIVE has an unsupported format")
+def file_input(root: Path, value: str, *, executable: bool = False) -> dict:
+    path, name = confined_path(root, value)
+    if not path.is_file() or (executable and not os.access(path, os.X_OK)):
+        raise GoalError(f"file is missing or not executable: {name}")
+    return {"path": name, "sha256": sha256(path), "mode": stat.S_IMODE(path.stat().st_mode)}
+
+
+def read_record(path: Path) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise GoalError(f"{path.name} must contain a JSON object")
     return data
+
+
+def valid_digest(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+
+
+def validate_record(root: Path, data: dict) -> dict:
+    if type(data.get("version")) is not int or data["version"] not in (1, 2):
+        raise GoalError("unsupported ACTIVE format")
+    if data.get("continuation", "hook") not in ("hook", "native", "pi"):
+        raise GoalError("invalid continuation owner")
+    if not valid_digest(data.get("verifier_sha256")):
+        raise GoalError("invalid verifier digest")
+    verifier = file_input(root, data.get("verifier"), executable=True)
+    if verifier["sha256"] != data["verifier_sha256"]:
+        raise GoalError("verifier changed after activation")
+    goal, _ = confined_path(root, ".agent/GOAL.md")
+    if not goal.is_file() or not goal.read_text(encoding="utf-8").strip():
+        raise GoalError("create a non-empty .agent/GOAL.md before starting")
+    snapshot = {"goal_sha256": sha256(goal), "verifier_mode": verifier["mode"]}
+    if data["version"] == 2:
+        if not isinstance(data.get("goal_id"), str) or not data["goal_id"]:
+            raise GoalError("missing goal identity")
+        if not valid_digest(data.get("goal_sha256")):
+            raise GoalError("invalid goal digest")
+        if any(data.get(key) != value for key, value in snapshot.items()):
+            raise GoalError("goal or verifier mode changed after activation")
+        inputs = data.get("verify_inputs")
+        if not isinstance(inputs, list):
+            raise GoalError("invalid verifier input inventory")
+        names = set()
+        for item in inputs:
+            if not isinstance(item, dict) or not valid_digest(item.get("sha256")):
+                raise GoalError("invalid verifier input")
+            actual = file_input(root, item.get("path"))
+            if actual != item or actual["path"] in names:
+                raise GoalError("verifier input changed or is duplicated")
+            names.add(actual["path"])
+    return snapshot
+
+
+def inspect_goal(root: Path) -> dict:
+    result = {
+        "status": "inactive", "continue": False,
+        "verifier": None, "verifier_sha256": None,
+    }
+    try:
+        directory, _ = confined_path(root, ".agent")
+        if directory.exists() and not directory.is_dir():
+            raise GoalError(".agent must be a directory")
+        markers = set()
+        for name in ("ACTIVE", "COMPLETE", "PAUSE", "BLOCKED.md"):
+            path, _ = confined_path(root, f".agent/{name}")
+            if path.exists():
+                if not path.is_file() or not path.read_text(encoding="utf-8").strip():
+                    raise GoalError(f"empty or invalid {name} marker")
+                markers.add(name)
+        if not markers:
+            return result
+        if {"PAUSE", "BLOCKED.md"} <= markers:
+            raise GoalError("conflicting pause and blocker markers")
+        if "COMPLETE" in markers:
+            if markers & {"PAUSE", "BLOCKED.md"}:
+                raise GoalError("completion conflicts with pause or blocker")
+            receipt = read_record(directory / "COMPLETE")
+            if (type(receipt.get("version")) is not int or receipt["version"] != 2
+                    or not isinstance(receipt.get("active"), dict)):
+                raise GoalError("completion has no verifiable receipt")
+            if not isinstance(receipt.get("completed_at"), str) or not receipt["completed_at"]:
+                raise GoalError("completion is missing its timestamp")
+            data = receipt["active"]
+            snapshot = validate_record(root, data)
+            if any(receipt.get(key) != value for key, value in snapshot.items()):
+                raise GoalError("completion receipt does not match goal/verifier inputs")
+            if "ACTIVE" in markers and read_record(directory / "ACTIVE") != data:
+                raise GoalError("completion receipt conflicts with ACTIVE")
+            result["status"] = "complete"
+        else:
+            if "ACTIVE" not in markers:
+                raise GoalError("pause or blocker has no ACTIVE record")
+            data = read_record(directory / "ACTIVE")
+            snapshot = validate_record(root, data)
+            result["status"] = (
+                "paused" if "PAUSE" in markers else "blocked" if "BLOCKED.md" in markers else "active"
+            )
+        result.update(
+            verifier=data["verifier"], verifier_sha256=data["verifier_sha256"],
+            continuation=data.get("continuation", "hook"), record=data,
+            goal_id=data.get("goal_id"), goal_sha256=snapshot["goal_sha256"],
+            verify_inputs=data.get("verify_inputs", []),
+        )
+        result["continue"] = result["status"] == "active"
+    except (GoalError, OSError, ValueError, TypeError) as error:
+        result.update(status="invalid", error=str(error), **{"continue": False})
+    return result
+
+
+def require_state(root: Path, *allowed: str) -> dict:
+    state = inspect_goal(root)
+    if state["status"] not in allowed:
+        message = f"goal is {state['status']}; expected {' or '.join(allowed)}"
+        raise GoalError(state.get("error", message))
+    return state
 
 
 def command_start(args: argparse.Namespace) -> int:
     root = repo_root()
     assert root is not None
-    directory = state_dir(root)
+    directory, _ = confined_path(root, ".agent")
+    require_state(root, "inactive")
     ensure_local_exclude(root)
 
-    goal = directory / "GOAL.md"
+    goal, _ = confined_path(root, ".agent/GOAL.md")
     if not goal.is_file() or not goal.read_text(encoding="utf-8").strip():
         raise GoalError("create a non-empty .agent/GOAL.md before starting")
-    if (directory / "ACTIVE").exists():
-        raise GoalError("a goal is already active")
-    stale = [name for name in ("BLOCKED.md", "COMPLETE", "PAUSE") if (directory / name).exists()]
-    if stale:
-        raise GoalError(f"clear previous goal state first: {', '.join(stale)}")
-
-    verifier, verifier_name = confined_path(root, args.verify)
-    if not verifier.is_file() or not os.access(verifier, os.X_OK):
-        raise GoalError(f"verifier is missing or not executable: {verifier_name}")
+    verifier = file_input(root, args.verify, executable=True)
+    verifier_name = verifier["path"]
+    inputs = {item["path"]: item for item in (file_input(root, name) for name in args.verify_input)}
 
     changes = git(root, "status", "--porcelain").stdout.strip()
     if changes and not args.allow_dirty:
@@ -136,10 +247,15 @@ def command_start(args: argparse.Namespace) -> int:
 
     directory.mkdir(parents=True, exist_ok=True)
     active = {
-        "version": 1,
+        "version": 2,
+        "goal_id": str(uuid.uuid4()),
+        "goal_sha256": sha256(goal),
         "started_at": now(),
+        "continuation": args.continuation,
         "verifier": verifier_name,
-        "verifier_sha256": sha256(verifier),
+        "verifier_sha256": verifier["sha256"],
+        "verifier_mode": verifier["mode"],
+        "verify_inputs": list(inputs.values()),
     }
     write_text(directory / "ACTIVE", json.dumps(active, indent=2) + "\n")
     if not (directory / "PROGRESS.md").exists():
@@ -152,24 +268,21 @@ def command_start(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_status(_: argparse.Namespace) -> int:
-    root = repo_root()
-    assert root is not None
-    directory = state_dir(root)
-    if (directory / "ACTIVE").is_file():
-        active = load_active(root)
-        if (directory / "BLOCKED.md").exists():
-            label = "blocked"
-        elif (directory / "PAUSE").exists():
-            label = "paused"
-        else:
-            label = "active"
-        print(f"Status: {label}")
-        print(f"Verifier: {active['verifier']}")
-    elif (directory / "COMPLETE").exists():
-        print("Status: complete")
+def command_status(args: argparse.Namespace) -> int:
+    root = repo_root(required=False)
+    state = inspect_goal(root) if root else {
+        "status": "inactive", "continue": False, "verifier": None, "verifier_sha256": None,
+    }
+    state.pop("record", None)
+    if args.json:
+        print(json.dumps(state))
     else:
-        print("Status: inactive")
+        print(f"Status: {state['status']}")
+        if state["verifier"]:
+            print(f"Verifier: {state['verifier']}")
+        if "error" in state:
+            print(f"Error: {state['error']}")
+    # Invalid state is still a successful inspection; clients must read status.
     return 0
 
 
@@ -177,26 +290,24 @@ def command_complete(_: argparse.Namespace) -> int:
     root = repo_root()
     assert root is not None
     directory = state_dir(root)
-    active = load_active(root)
-    if (directory / "PAUSE").exists() or (directory / "BLOCKED.md").exists():
-        raise GoalError("resume the goal before completing it")
-
-    verifier, verifier_name = confined_path(root, str(active["verifier"]))
-    if not verifier.is_file():
-        raise GoalError(f"verifier disappeared: {verifier_name}")
-    if sha256(verifier) != active.get("verifier_sha256"):
-        raise GoalError("verifier changed after activation; completion refused")
-
+    state = require_state(root, "active", "complete")
+    if state["status"] == "complete":
+        # Recover an interruption after receipt publication, before ACTIVE removal.
+        (directory / "ACTIVE").unlink(missing_ok=True)
+        print("Goal complete; verified receipt retained.")
+        return 0
+    active = state["record"]
+    snapshot = validate_record(root, active)
+    verifier, verifier_name = confined_path(root, active["verifier"])
     print(f"Running {verifier_name}...", flush=True)
     result = subprocess.run([str(verifier)], cwd=root, check=False)
     if result.returncode:
         raise GoalError(f"verification failed with exit code {result.returncode}")
-
-    head = git(root, "rev-parse", "--short", "HEAD", check=False).stdout.strip()
-    write_text(
-        directory / "COMPLETE",
-        f"completed_at: {now()}\nverifier: {verifier_name}\nhead: {head or 'unknown'}\n",
-    )
+    after = require_state(root, "active")
+    if after["record"] != active or validate_record(root, active) != snapshot:
+        raise GoalError("goal inputs changed during verification; completion refused")
+    receipt = {"version": 2, "completed_at": now(), "active": active, **snapshot}
+    write_text(directory / "COMPLETE", json.dumps(receipt, indent=2) + "\n")
     (directory / "ACTIVE").unlink()
     print("Goal complete; verification passed.")
     return 0
@@ -205,7 +316,7 @@ def command_complete(_: argparse.Namespace) -> int:
 def command_block(args: argparse.Namespace) -> int:
     root = repo_root()
     assert root is not None
-    load_active(root)
+    require_state(root, "active")
     write_text(
         state_dir(root) / "BLOCKED.md",
         "# Blocked\n\n"
@@ -221,7 +332,7 @@ def command_block(args: argparse.Namespace) -> int:
 def command_pause(args: argparse.Namespace) -> int:
     root = repo_root()
     assert root is not None
-    load_active(root)
+    require_state(root, "active")
     if not sys.stdin.isatty() and not args.force:
         raise GoalError("pause is a manual escape hatch; run it from a terminal")
     write_text(state_dir(root) / "PAUSE", f"paused_at: {now()}\nreason: {args.reason}\n")
@@ -232,15 +343,11 @@ def command_pause(args: argparse.Namespace) -> int:
 def command_resume(_: argparse.Namespace) -> int:
     root = repo_root()
     assert root is not None
-    load_active(root)
-    removed = False
+    require_state(root, "paused", "blocked")
     for name in ("BLOCKED.md", "PAUSE"):
         marker = state_dir(root) / name
         if marker.exists():
             marker.unlink()
-            removed = True
-    if not removed:
-        raise GoalError("goal is already active")
     print("Goal resumed.")
     return 0
 
@@ -248,7 +355,7 @@ def command_resume(_: argparse.Namespace) -> int:
 def command_clear(args: argparse.Namespace) -> int:
     root = repo_root()
     assert root is not None
-    directory = state_dir(root)
+    directory, _ = confined_path(root, ".agent")
     if not args.force:
         if not sys.stdin.isatty():
             raise GoalError("refusing to clear state non-interactively without --force")
@@ -275,27 +382,21 @@ def command_hook_stop(_: argparse.Namespace) -> int:
         print(json.dumps({"systemMessage": "agent-goal Stop hook received invalid JSON"}))
         return 0
 
-    # Codex sets this after it has already continued once because of a Stop
-    # hook. Returning another block here can repeatedly inject the hook reason
-    # into the conversation instead of letting the continued turn finish.
-    if payload.get("stop_hook_active") is True:
-        print("{}")
+    if not isinstance(payload, dict):
+        print(json.dumps({"systemMessage": "agent-goal Stop hook expected a JSON object"}))
         return 0
-
     root = repo_root(payload.get("cwd") or os.getcwd(), required=False)
-    if root is None:
-        print("{}")
+    state = inspect_goal(root) if root else {"status": "inactive", "continue": False}
+    if state["status"] == "invalid":
+        print(json.dumps({"systemMessage": f"agent-goal state invalid: {state['error']}"}))
         return 0
-    directory = state_dir(root)
-    if not (directory / "ACTIVE").is_file():
-        print("{}")
-        return 0
-    try:
-        load_active(root)
-    except GoalError as error:
-        print(json.dumps({"systemMessage": f"agent-goal Stop hook disabled: {error}"}))
-        return 0
-    if any((directory / name).exists() for name in ("BLOCKED.md", "COMPLETE", "PAUSE")):
+    # Native /goal and Pi own continuation when explicitly selected. The hook
+    # fallback permits one retry only: Codex's repeat-stop guard is not a durable loop.
+    if (
+        not state["continue"]
+        or state.get("continuation") in ("native", "pi")
+        or payload.get("stop_hook_active") is True
+    ):
         print("{}")
         return 0
 
@@ -316,9 +417,18 @@ def parser() -> argparse.ArgumentParser:
     start = subcommands.add_parser("start", help="activate the prepared goal")
     start.add_argument("--verify", default="scripts/verify", metavar="PATH")
     start.add_argument("--allow-dirty", action="store_true")
+    start.add_argument(
+        "--verify-input", action="append", default=[], metavar="PATH",
+        help="freeze an explicit helper file (repeatable; no implicit repository inventory)",
+    )
+    start.add_argument(
+        "--continuation", choices=("native", "hook", "pi"), default="hook",
+        help="continuation owner; native requires a separately activated Codex /goal",
+    )
     start.set_defaults(handler=command_start)
 
     status = subcommands.add_parser("status", help="show the current lifecycle state")
+    status.add_argument("--json", action="store_true")
     status.set_defaults(handler=command_status)
 
     complete = subcommands.add_parser("complete", help="verify and complete the goal")
@@ -352,7 +462,7 @@ def main() -> int:
     args = parser().parse_args()
     try:
         return args.handler(args)
-    except GoalError as error:
+    except (GoalError, OSError, ValueError, TypeError) as error:
         print(f"agent-goal: {error}", file=sys.stderr)
         return 1
 

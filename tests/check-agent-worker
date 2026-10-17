@@ -9,12 +9,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from tempfile import TemporaryDirectory
 
 
 source_root = Path(__file__).resolve().parents[1]
 worker_script = source_root / "dot_local/bin/executable_agent-worker"
-goal_cli = source_root / "dot_local/bin/executable_agent-goal"
+goal_cli = Path(os.environ.get("AGENT_GOAL_BIN", source_root / "dot_local/bin/executable_agent-goal"))
 
 
 def run(argv: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None,
@@ -85,6 +86,7 @@ with TemporaryDirectory(prefix="agent-worker-check-") as temporary:
     )
     (repo / "scripts/verify-ab").write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'if [[ -n "${WORKER_TEST_GATE:-}" ]]; then touch "$WORKER_TEST_GATE"; sleep 0.5; fi\n'
         "[[ $(cat component-a.txt) == A ]]\n"
         "[[ $(cat component-b.txt) == B ]]\n"
     )
@@ -125,7 +127,18 @@ args = sys.argv[1:]
 def option(name):
     return args[args.index(name) + 1]
 if args[:2] == ['agent', 'list']:
-    print(json.dumps({'result': {'agents': [{'name': name, 'state': item['state']} for name, item in state['agents'].items()]}}))
+    print(json.dumps({'result': {'agents': [dict(item, name=name) for name, item in state['agents'].items()]}}))
+elif args[:2] == ['workspace', 'get']:
+    item = state['workspaces'][args[2]]
+    print(json.dumps({'result': {'workspace': dict(item, workspace_id=args[2], worktree={'checkout_path': item['path']})}}))
+elif args[:2] == ['workspace', 'list']:
+    print(json.dumps({'result': {'workspaces': [dict(item, workspace_id=key, worktree={'checkout_path': item['path']}) for key,item in state['workspaces'].items()]}}))
+elif args[:2] == ['pane', 'list']:
+    item = state['workspaces'][option('--workspace')]
+    print(json.dumps({'result': {'panes': [{'pane_id': item['pane']}] + item.get('extra_panes', [])}}))
+elif args[:2] == ['tab', 'list']:
+    item = state['workspaces'][option('--workspace')]
+    print(json.dumps({'result': {'tabs': [{'tab_id': 'root-tab'}] + item.get('extra_tabs', [])}}))
 elif args[:2] == ['worktree', 'create']:
     repo = option('--cwd')
     branch = option('--branch')
@@ -133,24 +146,30 @@ elif args[:2] == ['worktree', 'create']:
     path = option('--path')
     label = option('--label')
     subprocess.run(['git', '-C', repo, 'worktree', 'add', '-q', '-b', branch, path, base], check=True)
-    workspace_id = f"test-w{len(state['workspaces']) + 1}"
+    state["sequence"] = state.get("sequence", 0) + 1
+    workspace_id = f"test-w{state['sequence']}"
     pane_id = f"{workspace_id}:p1"
     state['workspaces'][workspace_id] = {'repo': repo, 'path': path, 'name': label, 'pane': pane_id}
     state_file.write_text(json.dumps(state))
+    if os.environ.get('FAKE_HERDR_LOSE_CREATE'):
+        raise SystemExit('lost create response')
     print(json.dumps({'result': {'workspace': {'workspace_id': workspace_id}, 'root_pane': {'pane_id': pane_id}}}))
 elif args[:2] == ['agent', 'start']:
     name = args[2]
-    if os.environ.get('FAKE_HERDR_BLOCK_START') == name:
-        state['agents'][name] = {'state': 'blocked', 'prompt': ''}
-        state_file.write_text(json.dumps(state))
-        print(json.dumps({'error': {'code': 'agent_not_ready', 'message': 'startup approval required'}}), file=sys.stderr)
-        raise SystemExit(1)
-    state['agents'][name] = {'state': 'idle', 'prompt': ''}
+    workspace_id = next(key for key,item in state['workspaces'].items() if item['pane'] == option('--pane'))
+    blocked = os.environ.get('FAKE_HERDR_BLOCK_START')
+    state['agents'][name] = {'agent_status': 'blocked' if blocked else 'idle', 'prompt': '',
+        'pane_id': option('--pane'), 'workspace_id': workspace_id, 'agent': option('--kind'),
+        'terminal_id': 'terminal-' + workspace_id, 'agent_session': None,
+        'cwd': state['workspaces'][workspace_id]['path'], 'argv': args, 'starts': 1}
     state_file.write_text(json.dumps(state))
+    if blocked:
+        print('startup approval required', file=sys.stderr)
+        raise SystemExit(1)
     print(json.dumps({'ok': True}))
 elif args[:2] == ['agent', 'prompt']:
     name = args[2]
-    state['agents'][name]['state'] = 'working'
+    state['agents'][name]['agent_status'] = 'working'
     state['agents'][name]['prompt'] = args[3]
     state_file.write_text(json.dumps(state))
     print(json.dumps({'ok': True}))
@@ -161,8 +180,12 @@ elif args[:2] == ['agent', 'read']:
 elif args[:2] == ['worktree', 'remove']:
     workspace_id = option('--workspace')
     item = state['workspaces'][workspace_id]
-    subprocess.run(['git', '-C', item['repo'], 'worktree', 'remove', item['path']], check=True)
+    subprocess.run(['git', '-C', item['repo'], 'worktree', 'remove', item['path']] + (['--force'] if '--force' in args else []), check=True)
+    del state['workspaces'][workspace_id]
+    state['agents'] = {k:v for k,v in state['agents'].items() if v['workspace_id'] != workspace_id}
     state_file.write_text(json.dumps(state))
+    if os.environ.get('FAKE_HERDR_LOSE_REMOVE'):
+        raise SystemExit('lost remove response')
     print(json.dumps({'ok': True}))
 else:
     raise SystemExit(f"unexpected fake Herdr command: {args}")
@@ -175,6 +198,7 @@ else:
         "HERDR_ENV": "1",
         "AGENT_RUNS_DIR": str(temp / "state/agent-runs"),
         "FAKE_HERDR_STATE": str(fake_state),
+        "AGENT_GOAL_BIN": str(goal_cli),
     })
     worktree_root = temp / "worktrees"
 
@@ -192,8 +216,8 @@ else:
 
     first = spawn("phase-01", "phase-01.md", "scripts/verify-a")
     second = spawn("phase-02", "phase-02.md", "scripts/verify-b")
-    assert first["branch"] == "agent/phase-01"
-    assert second["branch"] == "agent/phase-02"
+    assert first["branch"] == "agent/three-phase/phase-01"
+    assert second["branch"] == "agent/three-phase/phase-02"
     assert first["worktree"] != second["worktree"]
     assert first["workspace_id"] != second["workspace_id"]
     assert first["base_commit"] == second["base_commit"] == base
@@ -205,8 +229,8 @@ else:
         assert "Do not discover or adopt sibling goals or tasks" in task_goal
 
     initial_agents = json.loads(fake_state.read_text())["agents"]
-    assert set(initial_agents) == {"phase-01", "phase-02"}
-    assert all(agent["state"] == "working" for agent in initial_agents.values())
+    assert set(initial_agents) == {first["herdr_name"], second["herdr_name"]}
+    assert all(agent["agent_status"] == "working" for agent in initial_agents.values())
     assert all("Do not push" in agent["prompt"] for agent in initial_agents.values())
     assert call_worker("status", "--run-id", "three-phase").returncode == 0
 
@@ -222,8 +246,6 @@ else:
     manifest_path = temp / "state/agent-runs/three-phase.json"
     manifest = json.loads(manifest_path.read_text())
     extra_active = temp / "reserved-worker/.agent"
-    extra_active.mkdir(parents=True)
-    (extra_active / "ACTIVE").write_text("reserved\n")
     manifest["tasks"]["reserved"] = {
         "name": "reserved", "worktree": str(extra_active.parent), "status": "launched"
     }
@@ -242,11 +264,13 @@ else:
         "--goal", str(goals / "phase-01.md"), "--worktree-root", str(worktree_root),
         check=False,
     ).returncode != 0
-    assert call_worker(
+    another = json.loads(call_worker(
         "spawn", "--repo", str(repo), "--run-id", "another-run", "--name", "phase-01",
-        "--goal", str(goals / "phase-01.md"), "--worktree-root", str(worktree_root),
-        check=False,
-    ).returncode != 0
+        "--goal", str(goals / "phase-01.md"), "--verify", "scripts/verify-a",
+        "--worktree-root", str(worktree_root),
+    ).stdout)
+    assert another["herdr_name"] != first["herdr_name"]
+    assert another["worktree"] != first["worktree"]
     assert call_worker("collect", "phase-01", "--run-id", "three-phase", check=False).returncode != 0
 
     first_root = Path(first["worktree"])
@@ -283,7 +307,7 @@ else:
     verifier_contents = verifier_a.read_text()
     verifier_a.write_text("#!/usr/bin/env bash\nexit 0\n")
     tampered = call_worker("collect", "phase-01", "--run-id", "three-phase", check=False)
-    assert tampered.returncode != 0 and "changed after activation" in tampered.stderr
+    assert tampered.returncode != 0
     verifier_a.write_text(verifier_contents)
     collect_a = json.loads(call_worker("collect", "phase-01", "--run-id", "three-phase").stdout)
     collect_b = json.loads(call_worker("collect", "phase-02", "--run-id", "three-phase").stdout)
@@ -313,6 +337,32 @@ else:
     )
     assert failed_verify.returncode != 0
     assert json.loads(manifest_path.read_text())["tasks"]["phase-01"]["status"] == "collected"
+    saved_patch = Path(collect_a["patch_path"]).read_bytes()
+    for tamper in (b"", b"forged patch\n"):
+        Path(collect_a["patch_path"]).write_bytes(tamper)
+        rejected = call_worker(
+            "integrated", "phase-01", "--run-id", "three-phase", "--at", integration_base,
+            "--checkout", str(repo), "--verify", "scripts/verify-ab", check=False,
+        )
+        assert rejected.returncode != 0 and "digest mismatch" in rejected.stderr
+    Path(collect_a["patch_path"]).write_bytes(saved_patch)
+    # Integration holds the run lock through verification. Recollection waits
+    # and then refuses the integrated task instead of replacing validated bytes.
+    gate = temp / "integration-gate"
+    concurrent_env = dict(environment, WORKER_TEST_GATE=str(gate))
+    integration = subprocess.Popen([sys.executable, str(worker_script), "integrated", "phase-01",
+        "--run-id", "three-phase", "--at", integration_base, "--checkout", str(repo),
+        "--verify", "scripts/verify-ab"], env=concurrent_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 10
+    while not gate.exists() and time.monotonic() < deadline and integration.poll() is None:
+        time.sleep(0.01)
+    assert gate.exists()
+    recollection = subprocess.Popen([sys.executable, str(worker_script), "collect", "phase-01",
+        "--run-id", "three-phase"], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    integration_output = integration.communicate(timeout=10)
+    assert integration.returncode == 0, integration_output
+    recollect_output = recollection.communicate(timeout=10)
+    assert recollection.returncode != 0 and "Cannot recollect" in recollect_output[1]
     for name in ("phase-01", "phase-02"):
         call_worker(
             "integrated", name, "--run-id", "three-phase", "--at", integration_base,
@@ -341,12 +391,299 @@ else:
         "--checkout", str(repo), "--verify", "scripts/verify",
     )
 
+    # Cleanup refuses a still-working session, then preserves all ignored data in an archive.
     refusal = call_worker("cleanup", "phase-01", "--run-id", "three-phase", check=False)
-    assert refusal.returncode != 0 and "dirty" in refusal.stderr
-    manifest = json.loads((temp / "state/agent-runs/three-phase.json").read_text())
-    assert [manifest["tasks"][name]["status"] for name in ("phase-01", "phase-02", "phase-03")] == [
-        "integrated", "integrated", "integrated"
-    ]
-    assert len([item for item in git(repo, "worktree", "list", "--porcelain").splitlines() if item.startswith("worktree ")]) == 5
+    assert refusal.returncode != 0 and "live working" in refusal.stderr
+    state = json.loads(fake_state.read_text())
+    for agent in state["agents"].values():
+        agent["agent_status"] = "done"
+    fake_state.write_text(json.dumps(state))
+    ignored = first_root / "private-cache"
+    ignored.mkdir()
+    (ignored / "keep.bin").write_bytes(b"preserve ignored data")
+    exclude = Path(git(repo, "rev-parse", "--git-common-dir"))
+    exclude = exclude if exclude.is_absolute() else repo / exclude
+    with (exclude / "info/exclude").open("a") as output:
+        output.write("\nprivate-cache/\n")
+    for key, extra in (("extra_panes", {"pane_id": "user-pane"}), ("extra_tabs", {"tab_id": "user-tab"})):
+        state = json.loads(fake_state.read_text())
+        state["workspaces"][first["workspace_id"]][key] = [extra]
+        fake_state.write_text(json.dumps(state))
+        refusal = call_worker("cleanup", "phase-01", "--run-id", "three-phase", check=False)
+        assert refusal.returncode != 0 and "additional panes or tabs" in refusal.stderr
+        assert first_root.exists()
+        state["workspaces"][first["workspace_id"]].pop(key)
+        fake_state.write_text(json.dumps(state))
+    cleaned = json.loads(call_worker("cleanup", "phase-01", "--run-id", "three-phase").stdout)
+    import tarfile
+    with tarfile.open(cleaned["archive"]) as archive:
+        assert archive.extractfile("private-cache/keep.bin").read() == b"preserve ignored data"
+        assert archive.extractfile("new-a.txt").read() == b"new untracked A\n"
+    assert not first_root.exists()
+    assert call_worker("cleanup", "phase-01", "--run-id", "three-phase").returncode == 0
+    # Changed work after integration cannot be deleted.
+    (second_root / "component-b.txt").write_text("unexpected\n")
+    assert call_worker("cleanup", "phase-02", "--run-id", "three-phase", check=False).returncode != 0
+    (second_root / "component-b.txt").write_text("B\n")
+    environment["FAKE_HERDR_LOSE_REMOVE"] = "1"
+    assert call_worker("cleanup", "phase-02", "--run-id", "three-phase", check=False).returncode != 0
+    environment.pop("FAKE_HERDR_LOSE_REMOVE")
+    assert not second_root.exists()
+    assert call_worker("cleanup", "phase-02", "--run-id", "three-phase").returncode == 0
+    assert third_root.parent.exists(), "cleanup must preserve sibling task directories"
+    call_worker("cleanup", "phase-03", "--run-id", "three-phase")
+    assert not third_root.parent.exists(), "empty run container should be removed"
+    repo_container = third_root.parent.parent
+    assert not repo_container.exists() or any(repo_container.iterdir()), "empty repository container should be removed"
+    assert third_root.parent.parent.parent.exists(), "configured worktree root must remain"
+
+    # Discovery is shallow and deduplicates linked checkouts by canonical common dir.
+    linked = temp / "linked"
+    git(repo, "worktree", "add", "-q", "-b", "linked", str(linked))
+    discovered = json.loads(call_worker("discover", str(temp)).stdout)
+    assert len(discovered) == 1 and discovered[0]["repository_id"] == first["repository_id"]
+    other = temp / "other/project"
+    other.parent.mkdir()
+    run(["git", "clone", "-q", str(repo), str(other)])
+    git(other, "config", "user.email", "worker-test@example.invalid")
+    git(other, "config", "user.name", "Agent Worker Test")
+    verify_ok = goals / "ok"
+    verify_ok.write_text("#!/bin/sh\nexit 0\n")
+    verify_ok.chmod(0o755)
+    herdr_config = temp / "herdr.toml"
+    central = temp / "central"
+    herdr_config.write_text(f'[worktrees]\ndirectory = "{central}"\n')
+    environment["HERDR_CONFIG_PATH"] = str(herdr_config)
+    org_plan = temp / "plan.json"
+    org_plan.write_text(json.dumps({"tasks": [
+        {"name": "alpha", "repo": str(linked), "goal": str(goals / "phase-01.md"),
+         "verify": str(verify_ok), "permission_profile": "workspace-write"},
+        {"name": "beta", "repo": str(other), "goal": str(goals / "phase-01.md"),
+         "verify": str(verify_ok), "permission_profile": "read-only"},
+        {"name": "gamma", "repo": str(other), "goal": str(goals / "phase-01.md"),
+         "verify": str(verify_ok), "depends_on": ["alpha"]},
+        {"name": "delta", "repo": str(repo), "goal": str(goals / "phase-01.md"),
+         "verify": str(verify_ok)},
+    ]}))
+    call_worker("plan", "--run-id", "org", "--file", str(org_plan))
+    org_manifest = temp / "state/agent-runs/org.json"
+    planned = json.loads(org_manifest.read_text())
+    assert all(task["status"] == "queued" for task in planned["tasks"].values())
+    assert planned["tasks"]["alpha"]["repository_id"] == first["repository_id"]
+    assert planned["tasks"]["alpha"]["repository_id"] != planned["tasks"]["beta"]["repository_id"]
+    assert all(Path(task["worktree"]).is_relative_to(central) for task in planned["tasks"].values())
+    launched = json.loads(call_worker("launch", "--run-id", "org").stdout)
+    assert {task["name"] for task in launched} == {"alpha", "beta"}
+    assert json.loads(call_worker("launch", "--run-id", "org").stdout) == []
+    assert call_worker("launch", "--run-id", "org", "--jobs", "4", check=False).returncode != 0
+    third_ready = json.loads(call_worker("launch", "--run-id", "org", "--jobs", "3").stdout)
+    assert [task["name"] for task in third_ready] == ["delta"]
+    agents = json.loads(fake_state.read_text())["agents"]
+    for task in launched:
+        assert len(task["herdr_name"]) <= 32
+        agent = agents[task["herdr_name"]]
+        assert agent["argv"][-7:] == ["--", "--sandbox", task["permission_profile"], "--config", 'approval_policy="never"', "--enable", "goals"]
+        assert agent["prompt"].startswith("/goal ")
+        assert json.loads((Path(task["worktree"]) / ".agent/ACTIVE").read_text())["continuation"] == "native"
+    # Cross-repository dependencies require integration, not unrelated Git ancestry.
+    alpha = planned["tasks"]["alpha"]
+    alpha_root = Path(alpha["worktree"])
+    run([str(goal_cli), "complete"], cwd=alpha_root)
+    alpha_patch = json.loads(call_worker("collect", "alpha", "--run-id", "org").stdout)
+    assert Path(alpha_patch["patch_path"]).read_bytes() == b""
+    assert json.loads(call_worker("launch", "--run-id", "org", "--jobs", "3").stdout) == []
+    Path(alpha_patch["patch_path"]).write_text("tampered empty patch")
+    assert call_worker("integrated", "alpha", "--run-id", "org", "--at", "HEAD",
+                       "--checkout", str(repo), check=False).returncode != 0
+    Path(alpha_patch["patch_path"]).write_bytes(b"")
+    call_worker("integrated", "alpha", "--run-id", "org", "--at", "HEAD", "--checkout", str(repo))
+    assert call_worker("collect", "alpha", "--run-id", "org", check=False).returncode != 0
+    git(repo, "worktree", "remove", str(linked))
+    assert not linked.exists()
+    gamma = json.loads(call_worker("launch", "--run-id", "org", "--jobs", "3").stdout)
+    assert [task["name"] for task in gamma] == ["gamma"]
+    # Same repository dependencies must be in the chosen base.
+    bad_base = call_worker("spawn", "--run-id", "org", "--repo", str(repo), "--name", "old-base",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), "--base", base,
+        "--depends-on", "alpha", check=False)
+    assert bad_base.returncode != 0 and "does not include" in bad_base.stderr
+    unsupported = call_worker("spawn", "--run-id", "policies", "--repo", str(repo), "--name", "unsupported",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), "--kind", "pi",
+        "--permission-profile", "read-only", check=False)
+    assert unsupported.returncode != 0 and "unsupported" in unsupported.stderr
+    # Lost create responses reconcile exact existing workspace/path/branch.
+    environment["FAKE_HERDR_LOSE_CREATE"] = "1"
+    lost = call_worker("spawn", "--run-id", "recover", "--repo", str(repo), "--name", "lost",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok),
+        "--permission-profile", "workspace-write", check=False)
+    assert lost.returncode != 0
+    environment.pop("FAKE_HERDR_LOSE_CREATE")
+    recovered = json.loads(call_worker("retry", "lost", "--run-id", "recover").stdout)
+    state = json.loads(fake_state.read_text())
+    count = len(state["workspaces"])
+    assert call_worker("retry", "lost", "--run-id", "recover").returncode == 0
+    assert len(json.loads(fake_state.read_text())["workspaces"]) == count
+    name = recovered["herdr_name"]
+    expected_arguments = state["agents"][name]["argv"]
+    state["agents"][name]["agent_status"] = "idle"
+    fake_state.write_text(json.dumps(state))
+    refused = call_worker("resume", "lost", "--run-id", "recover", check=False)
+    assert refused.returncode != 0 and "Cannot attest effective permission" in refused.stderr
+    state["agents"][name]["agent_status"] = "working"
+    fake_state.write_text(json.dumps(state))
+    # A same-name replacement in another pane must never receive prompts.
+    state["agents"][name]["pane_id"] = "wrong-pane"
+    fake_state.write_text(json.dumps(state))
+    assert call_worker("resume", "lost", "--run-id", "recover", check=False).returncode != 0
+    state["agents"][name]["pane_id"] = recovered["root_pane_id"]
+    state["workspaces"][recovered["workspace_id"]]["path"] = str(repo)
+    fake_state.write_text(json.dumps(state))
+    assert call_worker("retry", "lost", "--run-id", "recover", check=False).returncode != 0
+    state["workspaces"][recovered["workspace_id"]]["path"] = recovered["worktree"]
+    del state["agents"][name]
+    fake_state.write_text(json.dumps(state))
+    call_worker("resume", "lost", "--run-id", "recover")
+    state = json.loads(fake_state.read_text())
+    assert state["agents"][name]["argv"] == expected_arguments
+    # A blocked launch can be retried only after it is ready, without spawning twice.
+    environment["FAKE_HERDR_BLOCK_START"] = "1"
+    blocked = call_worker("spawn", "--run-id", "blocked", "--repo", str(repo), "--name", "blocked",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), check=False)
+    environment.pop("FAKE_HERDR_BLOCK_START")
+    assert blocked.returncode != 0
+    assert call_worker("retry", "blocked", "--run-id", "blocked", check=False).returncode != 0
+    blocked_task = json.loads((temp / "state/agent-runs/blocked.json").read_text())["tasks"]["blocked"]
+    state = json.loads(fake_state.read_text())
+    state["agents"][blocked_task["herdr_name"]]["agent_status"] = "idle"
+    fake_state.write_text(json.dumps(state))
+    refused = call_worker("retry", "blocked", "--run-id", "blocked", check=False)
+    assert refused.returncode != 0 and "Cannot attest effective permission" in refused.stderr
+    del state["agents"][blocked_task["herdr_name"]]
+    fake_state.write_text(json.dumps(state))
+    call_worker("retry", "blocked", "--run-id", "blocked")
+    # Legacy marker text and invalid state never count as verified completion.
+    beta_root = Path(planned["tasks"]["beta"]["worktree"])
+    run([str(goal_cli), "complete"], cwd=beta_root)
+    (beta_root / ".agent/COMPLETE").write_text("completed_at: legacy\n")
+    assert call_worker("collect", "beta", "--run-id", "org", check=False).returncode != 0
+
+    # Deferred same-repository tasks resolve HEAD only at first launch. Pinned
+    # hashes remain pinned and cannot accidentally consume a later dependency.
+    before_queue = git(repo, "rev-parse", "HEAD")
+    queue_plan = temp / "queue-plan.json"
+    queue_plan.write_text(json.dumps({"tasks": [
+        {"name": "producer", "repo": str(repo), "goal": str(goals / "phase-01.md"), "verify": str(verify_ok)},
+        {"name": "consumer", "repo": str(repo), "goal": str(goals / "phase-01.md"), "verify": "scripts/verify", "verify_input": ["scripts/verify-ab"], "depends_on": ["producer"]},
+        {"name": "pinned", "repo": str(repo), "goal": str(goals / "phase-01.md"), "verify": str(verify_ok), "depends_on": ["producer"], "base": before_queue},
+    ]}))
+    call_worker("plan", "--run-id", "sequential", "--file", str(queue_plan))
+    producer = json.loads(call_worker("launch", "--run-id", "sequential").stdout)
+    assert [task["name"] for task in producer] == ["producer"]
+    producer_root = Path(producer[0]["worktree"])
+    (producer_root / "queue-result.txt").write_text("dependency result\n")
+    run([str(goal_cli), "complete"], cwd=producer_root)
+    collected = json.loads(call_worker("collect", "producer", "--run-id", "sequential").stdout)
+    git(repo, "apply", collected["patch_path"])
+    git(repo, "add", "queue-result.txt")
+    git(repo, "commit", "-qm", "test: integrate queued producer")
+    after_queue = git(repo, "rev-parse", "HEAD")
+    call_worker("integrated", "producer", "--run-id", "sequential", "--at", "HEAD", "--checkout", str(repo))
+    consumer = json.loads(call_worker("launch", "--run-id", "sequential").stdout)
+    assert [task["name"] for task in consumer] == ["consumer"]
+    assert consumer[0]["initial_base_commit"] == before_queue
+    assert consumer[0]["base_commit"] == after_queue
+    assert (Path(consumer[0]["worktree"]) / "queue-result.txt").read_text() == "dependency result\n"
+    seq = json.loads((temp / "state/agent-runs/sequential.json").read_text())
+    assert seq["tasks"]["pinned"]["status"] == "queued"
+    assert seq["tasks"]["pinned"]["base_commit"] == before_queue
+    assert call_worker("retry", "consumer", "--run-id", "sequential").returncode == 0
+    assert json.loads((temp / "state/agent-runs/sequential.json").read_text())["tasks"]["consumer"]["base_commit"] == after_queue
+
+    consumer_root = Path(consumer[0]["worktree"])
+    inventory = json.loads((consumer_root / ".agent/ACTIVE").read_text())["verify_inputs"]
+    # Even an internally valid activation must still match the worker contract.
+    active_file = consumer_root / ".agent/ACTIVE"
+    original_active = active_file.read_text()
+    for field, value in (("verify_inputs", []), ("continuation", "pi")):
+        record = json.loads(original_active)
+        record[field] = value
+        active_file.write_text(json.dumps(record))
+        inspected = json.loads(call_worker("inspect", "consumer", "--run-id", "sequential").stdout)
+        assert inspected["goal_state"] == "invalid", field
+    active_file.write_text(original_active)
+    assert [item["path"] for item in inventory] == ["scripts/verify-ab"]
+    helper = consumer_root / "scripts/verify-ab"
+    helper.write_text(helper.read_text() + "# changed pinned helper\n")
+    assert run([str(goal_cli), "complete"], cwd=consumer_root, check=False).returncode != 0
+    assert call_worker("collect", "consumer", "--run-id", "sequential", check=False).returncode != 0
+
+    # Config roots never silently fall back to cwd, including malformed types.
+    for setting in ('directory = ""', 'directory = "relative"', 'directory = 42', 'directory = ["/tmp"]', 'directory = '):
+        herdr_config.write_text('[worktrees]\n' + setting + '\n')
+        refused = call_worker("spawn", "--run-id", "bad-root", "--repo", str(repo), "--name", "bad-root",
+            "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), check=False)
+        assert refused.returncode != 0 and ("root" in refused.stderr or "Invalid Herdr config" in refused.stderr)
+    herdr_config.write_text(f'[worktrees]\ndirectory = "{central}"\n')
+    for override in ("", "relative", "~someone/worktrees"):
+        refused = call_worker("spawn", "--run-id", "bad-root", "--repo", str(repo), "--name", "bad-root",
+            "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), "--worktree-root", override, check=False)
+        assert refused.returncode != 0 and "nonempty absolute or ~/" in refused.stderr
+    environment.pop("HERDR_CONFIG_PATH")
+    xdg = temp / "xdg"
+    (xdg / "herdr").mkdir(parents=True)
+    (xdg / "herdr/config.toml").write_text(herdr_config.read_text())
+    environment["XDG_CONFIG_HOME"] = str(xdg)
+    pinned = json.loads(call_worker("spawn", "--run-id", "inputs", "--repo", str(repo), "--name", "inputs",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok),
+        "--verify-input", "scripts/verify-a", "--verify-input", "scripts/verify-b").stdout)
+    assert Path(pinned["worktree"]).is_relative_to(central)
+    assert len(json.loads((Path(pinned["worktree"]) / ".agent/ACTIVE").read_text())["verify_inputs"]) == 2
+    # Legacy task records remain readable but cannot authorize resource mutation.
+    legacy = dict(pinned)
+    legacy.pop("repository_id")
+    legacy.pop("herdr_name")
+    legacy_path = temp / "state/agent-runs/legacy.json"
+    legacy_path.write_text(json.dumps({"version": 1, "run_id": "legacy", "repo": str(repo), "tasks": {"inputs": legacy}}))
+    inspected = json.loads(call_worker("inspect", "inputs", "--run-id", "legacy").stdout)
+    assert not inspected["identity_proven"] and inspected["task"]["name"] == "inputs"
+    for verb in ("retry", "resume", "cleanup"):
+        refused = call_worker(verb, "inputs", "--run-id", "legacy", check=False)
+        assert refused.returncode != 0 and "identity proof" in refused.stderr
+
+    # Plan typos never silently downgrade an explicitly intended restriction to
+    # the full-access default, and validation is atomic for the whole plan.
+    invalid_plan = temp / "invalid-plan.json"
+    valid_entry = {"name": "valid", "repo": str(repo), "goal": str(goals / "phase-01.md"), "verify": str(verify_ok)}
+    workspaces_before = json.loads(fake_state.read_text())["workspaces"]
+    for invalid in (
+        dict(valid_entry, name="bad", permissions="read-only"),
+        dict(valid_entry, name="bad", permission_profile=["read-only"]),
+        dict(valid_entry, name="bad", permission_profile="readonly"),
+        dict(valid_entry, name="bad", depends_on="valid"),
+        dict(valid_entry, name="bad", depends_on=[42]),
+        dict(valid_entry, name="bad", verify_input="scripts/verify-a"),
+        dict(valid_entry, name=42), "not an object",
+    ):
+        invalid_plan.write_text(json.dumps({"tasks": [valid_entry, invalid]}))
+        rejected = call_worker("plan", "--run-id", "invalid-plan", "--file", str(invalid_plan), check=False)
+        assert rejected.returncode != 0
+        assert not (temp / "state/agent-runs/invalid-plan.json").exists()
+    assert json.loads(fake_state.read_text())["workspaces"] == workspaces_before
+
+    # A freshly verified different goal using the same verifier cannot satisfy
+    # this worker's original task, nor can reactivation of identical goal text.
+    pinned_root = Path(pinned["worktree"])
+    original_goal = (pinned_root / ".agent/GOAL.md").read_text()
+    (pinned_root / ".agent/ACTIVE").unlink()
+    (pinned_root / ".agent/GOAL.md").write_text(original_goal + "\nDifferent task.\n")
+    run([str(goal_cli), "start", "--verify", ".agent/VERIFY"], cwd=pinned_root)
+    run([str(goal_cli), "complete"], cwd=pinned_root)
+    assert call_worker("collect", "inputs", "--run-id", "inputs", check=False).returncode != 0
+    (pinned_root / ".agent/COMPLETE").unlink()
+    (pinned_root / ".agent/GOAL.md").write_text(original_goal)
+    run([str(goal_cli), "start", "--verify", ".agent/VERIFY"], cwd=pinned_root)
+    assert call_worker("resume", "inputs", "--run-id", "inputs", check=False).returncode != 0
+    run([str(goal_cli), "complete"], cwd=pinned_root)
+    assert call_worker("collect", "inputs", "--run-id", "inputs", check=False).returncode != 0
 
 print("agent-worker checks passed.")

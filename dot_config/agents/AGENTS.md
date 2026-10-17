@@ -8,6 +8,10 @@
   `.agent/ACTIVE` goal has exactly one root implementation agent; never run
   Codex and Pi together in that worktree.
 - Delegate only when the user explicitly asks. Workers must stay within their assigned task and must not delegate recursively by default.
+- The user has explicitly requested bounded per-repository delegation for
+  autonomous implementation goals spanning multiple selected repositories.
+  Treat that as standing delegation authority for those goals; it does not
+  grant commit, push, PR, or deployment authority.
 - Before staging or committing, inspect `git status`; stage only task-owned paths.
   Never broadly reset, restore, clean, or remove another worker's changes.
 - Commits require explicit authority in the task contract. Pushes, PRs, and deployments require separate explicit authority.

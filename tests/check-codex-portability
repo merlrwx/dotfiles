@@ -10,7 +10,7 @@ config="$repo_root/dot_codex/create_private_config.toml.tmpl"
 shared_instructions="$repo_root/dot_config/agents/AGENTS.md"
 codex_instructions="$repo_root/dot_codex/AGENTS.md.tmpl"
 pi_instructions="$repo_root/dot_pi/agent/AGENTS.md.tmpl"
-pi_settings="$repo_root/dot_pi/agent/settings.json.tmpl"
+pi_settings="$repo_root/dot_pi/agent/modify_settings.json.tmpl"
 pi_mcp="$repo_root/dot_pi/agent/mcp.json.tmpl"
 launcher="$repo_root/dot_local/bin/executable_herdr-launch"
 worker="$repo_root/dot_local/bin/executable_agent-worker"
@@ -80,7 +80,7 @@ for instructions in "$codex_instructions" "$pi_instructions"; do
     fi
 done
 
-rendered_settings="$(chezmoi --source "$repo_root" execute-template <"$pi_settings")"
+rendered_settings="$(python3 "$pi_settings" </dev/null)"
 rendered_mcp="$(chezmoi --source "$repo_root" \
     --override-data '{"homelab_mcp_url":"https://mcp-server.home.arpa/mcp/"}' \
     execute-template <"$pi_mcp")"

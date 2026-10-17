@@ -11,15 +11,22 @@ python3 - "$repo_root" <<'PY'
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
+import shutil
 import subprocess
 import sys
 
 repo_root = Path(sys.argv[1])
+real_chezmoi = shutil.which("chezmoi")
+assert real_chezmoi, "chezmoi is required for the fresh-workspace regression check"
 
 with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     home = Path(temp_dir)
     fake_bin = home / "fake-bin"
     fake_bin.mkdir()
+    managed_node = home / "managed-node/bin/node"
+    managed_node.parent.mkdir(parents=True)
+    managed_node.write_text("#!/usr/bin/env bash\nprintf 'v24.21.0\\n'\n")
+    managed_node.chmod(0o755)
     bashrc = home / ".bashrc"
     bashrc.write_text("# Project DevContainer shell setup\nexport PROJECT_ENV=ready\n")
     (home / ".gitconfig").write_text('[credential]\n\thelper = devpod-forwarder\n')
@@ -52,6 +59,7 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "    printf '%s\\n' \"$*\" >>\"$HOME/mise-calls\"\n"
         "    shift\n"
         "    [[ ${1-} == -- ]] && shift\n"
+        "    export PATH=\"$HOME/managed-node/bin:$PATH\"\n"
         "    command \"$@\"\n"
         "    ;;\n"
         "  *) exit 2 ;;\n"
@@ -74,9 +82,11 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "INSTALLER\n"
         "    ;;\n"
         "  '-fsSL https://pi.dev/install.sh')\n"
+        "    printf 'installed\\n' >>\"$HOME/pi-installer-calls\"\n"
         "    cat <<'INSTALLER'\n"
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
+        "[[ $(command -v node) == \"$HOME/managed-node/bin/node\" ]] || { echo 'Managed Node.js missing from Pi install environment' >&2; exit 1; }\n"
         "install -d -m 0755 \"$HOME/.pi/agent/bin\"\n"
         "cat >\"$HOME/.pi/agent/bin/pi\" <<'PI'\n"
         "#!/usr/bin/env bash\n"
@@ -95,6 +105,7 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         "printf '%s\\n' \"$*\" >\"$HOME/chezmoi-apply-args\"\n"
+        "printf '%s\\n' \"$@\" >\"$HOME/chezmoi-apply-argv\"\n"
         "install -d -m 0755 \"$HOME/.config/nvim/lua/config\"\n"
         "printf '%s\\n' '-- starter init' >\"$HOME/.config/nvim/init.lua\"\n"
         "printf '%s\\n' '-- upstream lazy bootstrap' >\"$HOME/.config/nvim/lua/config/lazy.lua\"\n"
@@ -159,6 +170,14 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     assert (home / ".codex/AGENTS.md").read_text() == shared_instructions
     assert (home / ".pi/agent/AGENTS.md").read_text() == shared_instructions
     assert (home / ".codex/skills/autonomous-goal/SKILL.md").is_file()
+    assert (home / ".pi/agent/skills/autonomous-goal/SKILL.md").is_file()
+    assert (home / ".pi/agent/skills/parallel-work/SKILL.md").is_file()
+    for tool in ("agent-goal", "agent-worker"):
+        installed = home / ".local/bin" / tool
+        assert installed.read_bytes() == (repo_root / "dot_local/bin" / f"executable_{tool}").read_bytes()
+        assert installed.stat().st_mode & 0o111
+    assert (home / ".pi/agent/extensions/autonomous-goal.ts").is_file()
+    assert "default to grilling with docs" in (home / ".pi/agent/skills/grill-me/SKILL.md").read_text()
     assert (home / ".codex/skills/project-scaffold/SKILL.md").is_file()
     assert (home / ".codex/skills/project-scaffold/references/selection-rules.md").is_file()
     assert (home / ".config/starship.toml").is_file()
@@ -170,22 +189,65 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     assert (home / ".config/mise/mise.lock").read_text() == (repo_root / "dot_config/mise/mise.lock").read_text()
     for locked_sidecar in ("uv.lock", "pyproject.toml"):
         sidecar = ".mise/locks/pipx-copier/9.18.2/" + locked_sidecar
+        source_sidecar = "dot_mise/locks/pipx-copier/9.18.2/" + locked_sidecar
         assert (home / ".config/mise" / sidecar).read_text() == (
-            repo_root / "dot_config/mise" / sidecar
+            repo_root / "dot_config/mise" / source_sidecar
         ).read_text()
     mise_calls = (home / "mise-calls").read_text().splitlines()
     assert mise_calls[0] == f"trust --yes {home}/.config/mise/config.toml"
     assert mise_calls[1] == f"install --locked --cd {home}"
     assert mise_calls[2].startswith("exec -- chezmoi --source ")
-    assert "apply --force --include=files " + str(home / ".config/nvim") in mise_calls[2]
+    assert "apply --force --include=files,dirs " + str(home / ".config/nvim") in mise_calls[2]
     assert str(home) in (home / "chezmoi-apply-args").read_text()
+    # Replay the installer's actual flags against real Chezmoi with no host
+    # configuration. Externals must render before any workspace config exists.
+    chezmoi_args = (home / "chezmoi-apply-argv").read_text().splitlines()
+    empty_config = home / "empty-chezmoi.toml"
+    empty_config.touch()
+    rendered = subprocess.run(
+        [real_chezmoi, "--config", str(empty_config),
+         *chezmoi_args[:chezmoi_args.index("apply")],
+         "managed", "--include=files"],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert rendered.returncode == 0, rendered.stderr
+    assert "IoskeleyMonoTermNerdFont" not in rendered.stdout
+    # A fresh home has no Neovim directories. Replay the apply operation with
+    # a small source tree so this check needs no external archive download.
+    fresh_home = home / "fresh-home"
+    (fresh_home / ".config").mkdir(parents=True)
+    fresh_source = home / "fresh-source"
+    config_source = fresh_source / "dot_config/nvim/lua/config"
+    config_source.mkdir(parents=True)
+    (config_source / "lazy.lua").write_text("-- fresh workspace fixture\n")
+    apply_args = chezmoi_args.copy()
+    apply_args[apply_args.index("--source") + 1] = str(fresh_source)
+    apply_args[apply_args.index("--destination") + 1] = str(fresh_home)
+    apply_args[-1] = str(fresh_home / ".config/nvim")
+    applied = subprocess.run(
+        [real_chezmoi, "--config", str(empty_config), *apply_args],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert applied.returncode == 0, applied.stderr
+    assert (fresh_home / ".config/nvim/lua/config/lazy.lua").is_file()
     assert (home / ".local/bin/codex").is_file()
     assert (home / "codex-installer-calls").read_text().splitlines() == ["installed"]
     assert codex_config.read_text().startswith('[tui]\ntheme = "gruvbox-material-hard"')
     assert 'trust_level = "trusted"' in codex_config.read_text()
     assert "mcp_servers" not in codex_config.read_text()
     assert (home / ".pi/agent/bin/pi").is_file()
+    assert (home / "pi-installer-calls").read_text().splitlines() == ["installed"]
 
+    # An image's older Mise must not win when ~/.local/bin is already present
+    # later on PATH (as happens after a login profile has appended it).
+    stale_mise = fake_bin / "mise"
+    stale_mise.write_text("#!/usr/bin/env bash\necho 'stale image Mise selected' >&2\nexit 1\n")
+    stale_mise.chmod(0o755)
+    interactive_env = dict(env, PATH=env["PATH"] + f":{home}/.local/bin")
     interactive_shell = subprocess.run(
         [
             "bash",
@@ -193,9 +255,9 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
             "--rcfile",
             str(bashrc),
             "-ic",
-            "command -v pi && pi",
+            'test "$(type -P mise)" = "$HOME/.local/bin/mise" && command -v pi && pi',
         ],
-        env=env,
+        env=interactive_env,
         text=True,
         capture_output=True,
         check=True,

@@ -24,9 +24,9 @@ install -Dm0644 "$dotfiles_root/dot_config/bash/completions/init" \
     "$HOME/.config/bash/completions/init"
 install -Dm0644 "$dotfiles_root/dot_config/mise/config.toml" "$mise_config"
 install -Dm0644 "$dotfiles_root/dot_config/mise/mise.lock" "$mise_lock"
-if [[ -d "$dotfiles_root/dot_config/mise/.mise/locks" ]]; then
+if [[ -d "$dotfiles_root/dot_config/mise/dot_mise/locks" ]]; then
     mkdir -p "$HOME/.config/mise/.mise/locks"
-    cp -a "$dotfiles_root/dot_config/mise/.mise/locks/." \
+    cp -a "$dotfiles_root/dot_config/mise/dot_mise/locks/." \
         "$HOME/.config/mise/.mise/locks/"
 fi
 
@@ -89,7 +89,8 @@ fi
 (
     cd -- "$HOME"
     "$MISE" exec -- chezmoi --source "$dotfiles_root" --destination "$HOME" \
-        apply --force --include=files "$HOME/.config/nvim"
+        --override-data '{"profile":"cli"}' \
+        apply --force --include=files,dirs "$HOME/.config/nvim"
 )
 
 # ~~~~~~~~~~~~~~~ Shared agent instructions and skills ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -102,7 +103,18 @@ done
 while IFS= read -r -d '' skill_file; do
     relative_path="${skill_file#"$dotfiles_root/dot_codex/skills/"}"
     install -Dm0644 "$skill_file" "$HOME/.codex/skills/$relative_path"
+    install -Dm0644 "$skill_file" "$HOME/.pi/agent/skills/$relative_path"
 done < <(find "$dotfiles_root/dot_codex/skills" -type f -print0)
+
+# Keep the portable goal core and Pi adapter available with the installed skills.
+for tool in agent-goal agent-worker; do
+    install -Dm0755 "$dotfiles_root/dot_local/bin/executable_$tool" \
+        "$HOME/.local/bin/$tool"
+done
+install -Dm0644 "$dotfiles_root/dot_pi/agent/extensions/autonomous-goal.ts" \
+    "$HOME/.pi/agent/extensions/autonomous-goal.ts"
+install -Dm0644 "$dotfiles_root/dot_pi/agent/skills/grill-me/SKILL.md" \
+    "$HOME/.pi/agent/skills/grill-me/SKILL.md"
 
 # ~~~~~~~~~~~~~~~ Codex and Pi workspace setup ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -116,9 +128,9 @@ if ! command -v codex >/dev/null 2>&1 && [[ ! -x "$codex_install_dir/codex" ]]; 
     curl -fsSL https://chatgpt.com/codex/install.sh | sh
 fi
 
-pi_install_dir="$HOME/.local/bin"
+pi_install_dir="$HOME/.pi/agent/bin"
 if ! command -v pi >/dev/null 2>&1 && [[ ! -x "$pi_install_dir/pi" ]]; then
-    curl -fsSL https://pi.dev/install.sh | sh
+    curl -fsSL https://pi.dev/install.sh | "$MISE" exec -- sh
 fi
 
 # ~~~~~~~~~~~~~~~ Bash and Git integration ~~~~~~~~~~~~~~~~~~~~~~~~

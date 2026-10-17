@@ -80,6 +80,12 @@ three modes, boundaries, and recovery steps, and [Git branches and worktrees](do
 for branch integration and cleanup. Coordination stays with the active agent;
 there is no background scheduler.
 
+The coordinator can also start in a parent folder containing several repositories.
+Use `agent-worker discover` to select repositories and `plan`/`launch` to queue a
+shared run. The parent needs no Git repository or `.agent` folder. Worker folders
+stay under Herdr's configured central root (normally `~/.herdr/worktrees`), with
+unique repository/run/task paths. See the [organization example](docs/parallel-work.md#organization-run-from-a-parent-folder).
+
 From a coordinator already running in Herdr, a request can look like this:
 
 ```text
@@ -110,7 +116,10 @@ codex
 The Bash wrapper starts interactive Codex sessions without the shared
 background daemon. This avoids feature-setting conflicts between CLI sessions
 and other Codex clients; management commands such as `codex mcp` keep their
-normal behavior.
+normal behavior. Resume preserves the caller's permission flags; it does not
+automatically add `--yolo`. Use `agent-worker resume` for a managed worker so
+its recorded policy is reused. Filesystem access never grants push or deployment
+authority by itself.
 
 Pi can use its own session too:
 
@@ -159,7 +168,8 @@ The workspace installer installs the same pinned global Mise tools as the host,
 then adds Codex and Pi, the shared Neovim config, a small Bash overlay, Gruvbox
 Material Starship settings, Git defaults, shared agent instructions, and a
 minimal Codex theme config. The Codex theme is seeded only when no user config
-exists. It does not install Herdr, Pi's host-only autonomous-goal extension, or
+exists. It includes the portable goal commands, Pi continuation extension, and
+Pi's docs-first GrillMe skill. It does not install Herdr or
 homelab MCP configuration. It never copies host agent auth or MCP files, Git,
 SSH, Docker, or provider credentials. DevPod provides HTTPS Git credential
 helpers, SSH agent forwarding, and Docker credential forwarding where
@@ -172,7 +182,7 @@ and [DevPod credential forwarding](https://devpod.sh/docs/developing-in-workspac
 
 This mode works with a normal DevPod provider, such as Docker on a laptop or
 work machine. It does not require Tailscale or homelab MCP. Each worker has a
-unique DevPod ID and a Git worktree inside that workspace's project checkout.
+unique DevPod ID and a Git worktree under its own `~/.herdr/worktrees` directory.
 Create a fresh workspace for each task from the same repository:
 
 ```bash
@@ -202,17 +212,19 @@ and start Codex there:
 ```bash
 task=api-timeouts
 git fetch origin
-mkdir -p .agent-worktrees
-grep -Fxq '/.agent-worktrees/' .git/info/exclude || \
-  printf '/.agent-worktrees/\n' >> .git/info/exclude
-git worktree add ".agent-worktrees/$task" -b "agent/$task" HEAD
-cd ".agent-worktrees/$task"
+project=$(basename "$PWD")
+run=api-upgrade
+worktree="$HOME/.herdr/worktrees/$project/$run/$task"
+mkdir -p "$(dirname "$worktree")"
+git worktree add "$worktree" -b "agent/$run/$task" HEAD
+cd "$worktree"
 codex
 ```
 
 Repeat with a new task name and DevPod ID for every additional worker. The
-worktree is inside its workspace so the project checkout, worktree, and
-DevContainer tools stay together. Codex can push branches through DevPod's
+worktree remains inside the DevPod container, with its DevContainer tools,
+without creating folders beside the source repository. Keep the worktree until
+its changes are verified and integrated. Codex can push branches through DevPod's
 Git credential helper or forwarded SSH agent. DevPod also supports Docker
 registry credential forwarding. Codex itself uses a separate workspace sign-in;
 on first use run `codex login --device-auth` and finish the device flow. Its
