@@ -5,11 +5,16 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 temporary_dir="$(mktemp -d)"
 trap 'rm -rf -- "$temporary_dir"' EXIT
-mkdir -p "$temporary_dir/bin"
+mkdir -p "$temporary_dir/bin" "$temporary_dir/home"
 
 cat >"$temporary_dir/bin/kubectl" <<'KUBECTL'
 #!/usr/bin/env bash
 if [[ ${1-} == completion && ${2-} == bash ]]; then
+    printf 'generated\n' >>"$HOME/kubectl-completion-calls"
+    if [[ ${KUBECTL_FAIL_GENERATION:-0} == 1 ]]; then
+        printf 'broken() {\n'
+        exit 1
+    fi
     cat <<'COMPLETION'
 __start_kubectl() {
     local cur=${COMP_WORDS[COMP_CWORD]-}
@@ -49,6 +54,7 @@ __start_devpod() {
 complete -o default -F __start_devpod devpod
 COMPLETION
 elif [[ ${1-} == list ]]; then
+    printf 'listed\n' >>"$HOME/devpod-list-calls"
     if [[ ${DEVPOD_FAIL_LIST:-0} == 1 ]]; then
         printf 'workspace service unavailable\n' >&2
         exit 1
@@ -63,6 +69,7 @@ chmod +x "$temporary_dir/bin/devpod"
 cat >"$temporary_dir/bin/herdr" <<'HERDR'
 #!/usr/bin/env bash
 if [[ ${1-} == completion && ${2-} == bash ]]; then
+    printf 'generated\n' >>"$HOME/herdr-completion-calls"
     cat <<'COMPLETION'
 _herdr() {
     local cur=${2-}
@@ -76,6 +83,7 @@ _herdr() {
 complete -o default -F _herdr herdr
 COMPLETION
 elif [[ ${1-} == session && ${2-} == list && ${3-} == --json ]]; then
+    printf 'listed\n' >>"$HOME/herdr-list-calls"
     if [[ ${HERDR_FAIL_LIST:-0} == 1 ]]; then
         printf 'Herdr service unavailable\n' >&2
         exit 1
@@ -90,6 +98,7 @@ chmod +x "$temporary_dir/bin/herdr"
 cat >"$temporary_dir/bin/flux" <<'FLUX'
 #!/usr/bin/env bash
 if [[ ${1-} == completion && ${2-} == bash ]]; then
+    printf 'generated\n' >>"$HOME/flux-completion-calls"
     cat <<'COMPLETION'
 __start_flux() { COMPREPLY=(get reconcile suspend); }
 complete -F __start_flux flux
@@ -103,6 +112,7 @@ chmod +x "$temporary_dir/bin/flux"
 cat >"$temporary_dir/bin/mise" <<'MISE'
 #!/usr/bin/env bash
 if [[ ${1-} == completion && ${2-} == bash ]]; then
+    printf 'generated\n' >>"$HOME/mise-completion-calls"
     cat <<'COMPLETION'
 __start_mise() { COMPREPLY=(activate install trust); }
 complete -F __start_mise mise
@@ -115,6 +125,7 @@ chmod +x "$temporary_dir/bin/mise"
 
 PATH="$temporary_dir/bin:$PATH" \
 HOME="$temporary_dir/home" \
+XDG_CACHE_HOME="$temporary_dir/cache" \
 COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" \
 bash --noprofile --norc -euo pipefail <<'BASH'
 fail() {
@@ -129,9 +140,11 @@ herdr() {
 
 source "$COMPLETION_SOURCE"
 
-[[ $(<"$HOME/devpod-completion-calls") == generated ]] || fail 'DevPod native completion was not generated'
-source "$COMPLETION_SOURCE"
-[[ $(<"$HOME/devpod-completion-calls") == generated ]] || fail 'DevPod native completion cache was not reused'
+for tool in kubectl devpod herdr flux mise; do
+    [[ ! -e $HOME/$tool-completion-calls ]] || fail "$tool generated completions during startup"
+    BLE_ATTACHED=1 comp_type=auto __dotfiles_complete "$tool" '' ''
+    [[ ! -e $HOME/$tool-completion-calls ]] || fail "$tool generated completions for automatic suggestions"
+done
 
 complete -p kubectl >/dev/null 2>&1 || fail 'kubectl completion was not registered'
 complete -p k >/dev/null 2>&1 || fail 'k alias completion was not registered'
@@ -155,6 +168,25 @@ complete_line() {
     "$completion_function" "${COMP_WORDS[0]}" "${COMP_WORDS[COMP_CWORD]-}" "${COMP_WORDS[COMP_CWORD-1]-}"
     printf '%s\n' "${COMPREPLY[@]}"
 }
+
+# Load every provider in the current shell, then simulate another shell by
+# clearing its dispatch target. Valid generated scripts must be reused.
+for tool in kubectl devpod herdr flux mise; do
+    complete_line "$tool" "$tool" '' >/dev/null
+    [[ $(<"$HOME/$tool-completion-calls") == generated ]] || fail "$tool not generated on first completion"
+    unset "__dotfiles_completion_$tool"
+    source "$COMPLETION_SOURCE"
+    complete_line "$tool" "$tool" '' >/dev/null
+    [[ $(<"$HOME/$tool-completion-calls") == generated ]] || fail "$tool cache not reused"
+    # An updated executable invalidates its cached script.
+    touch -d 'next hour' "$(type -P "$tool")"
+    unset "__dotfiles_completion_$tool"
+    complete_line "$tool" "$tool" '' >/dev/null
+    [[ $(<"$HOME/$tool-completion-calls") == $'generated\ngenerated' ]] || fail "$tool cache not refreshed"
+    touch -d 'yesterday' "$(type -P "$tool")"
+done
+[[ $(complete_line flux flux '') == *reconcile* ]] || fail 'Flux candidates missing'
+[[ $(complete_line mise mise '') == *install* ]] || fail 'Mise candidates missing'
 
 kubectl_resources="$(complete_line kubectl kubectl get '')"
 k_resources="$(complete_line k k get '')"
@@ -188,12 +220,49 @@ herdr_sessions="$(complete_line herdr herdr --session '')"
 [[ $herdr_sessions != *filesystem-candidate* ]] || fail 'Herdr session completion still falls back to filesystem candidates'
 [[ -z ${HERDR_WRAPPER_CALLED:-} ]] || fail 'Herdr completion generation called the shell wrapper'
 
+for tool in devpod herdr; do
+    : >"$HOME/$tool-list-calls"
+    if [[ $tool == devpod ]]; then
+        complete_line devpod devpod ssh '' >/dev/null
+        complete_line devpod devpod ssh task-g >/dev/null
+    else
+        complete_line herdr herdr --session '' >/dev/null
+        complete_line herdr herdr --session=cod >/dev/null
+        [[ ${COMPREPLY[*]} == --session=codex-blue ]] || fail 'Herdr equals completion failed'
+    fi
+    [[ $(<"$HOME/$tool-list-calls") == listed ]] || fail "$tool live cache not reused"
+    BLE_ATTACHED=1 comp_type=auto __dotfiles_complete "$tool" '' ''
+    [[ ${#COMPREPLY[@]} == 0 ]] || fail "$tool ran provider during automatic suggestions"
+    [[ $(<"$HOME/$tool-list-calls") == listed ]] || fail "$tool queried live data automatically"
+done
+unset __dotfiles_devpod_cache_at __dotfiles_herdr_cache_at
 export DEVPOD_FAIL_LIST=1
 devpod_failed="$(complete_line devpod devpod ssh '')" || fail 'DevPod listing failure broke completion'
 [[ -z $devpod_failed ]] || fail 'DevPod listing failure returned invalid candidates'
 export HERDR_FAIL_LIST=1
 herdr_failed="$(complete_line herdr herdr --session '')" || fail 'Herdr listing failure broke completion'
 [[ -z $herdr_failed ]] || fail 'Herdr listing failure returned invalid candidates'
+# A failed refresh must not replace a good cache, and the next Tab can retry.
+old_cache=$(find "$XDG_CACHE_HOME/bash/completions" -name 'kubectl-*.bash' -print -quit)
+cp "$old_cache" "$HOME/good-kubectl-cache"
+touch -d 'next hour' "$(type -P kubectl)"
+unset __dotfiles_completion_kubectl
+export KUBECTL_FAIL_GENERATION=1
+complete_line kubectl kubectl get '' >/dev/null
+cmp "$old_cache" "$HOME/good-kubectl-cache" || fail 'failed refresh corrupted the cache'
+[[ ${#COMPREPLY[@]} == 0 ]] || fail 'failed generation returned candidates'
+unset KUBECTL_FAIL_GENERATION
+complete_line kubectl kubectl get '' >/dev/null
+[[ ${COMPREPLY[*]} == *pods* ]] || fail 'completion did not recover after generation failed'
+touch -d 'yesterday' "$(type -P kubectl)"
+
+# A different executable path must not reuse the old tool's script.
+mkdir -p "$HOME/other-bin"
+cp "$(type -P kubectl)" "$HOME/other-bin/kubectl"
+PATH="$HOME/other-bin:$PATH"
+unset __dotfiles_completion_kubectl
+complete_line kubectl kubectl get '' >/dev/null
+[[ $(find "$XDG_CACHE_HOME/bash/completions" -name 'kubectl-*.bash' | wc -l) -eq 2 ]] || fail 'executable paths shared a cache'
 BASH
 
 startup_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/startup-home" XDG_CACHE_HOME="$temporary_dir/startup-cache" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"' 2>&1)"
@@ -201,7 +270,7 @@ startup_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/startup-h
 
 mkdir -p "$temporary_dir/fallback-home"
 touch "$temporary_dir/cache-is-a-file"
-fallback_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/fallback-home" XDG_CACHE_HOME="$temporary_dir/cache-is-a-file" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"; complete -p devpod >/dev/null' 2>&1)"
+fallback_output="$(PATH="$temporary_dir/bin:$PATH" HOME="$temporary_dir/fallback-home" XDG_CACHE_HOME="$temporary_dir/cache-is-a-file" COMPLETION_SOURCE="$repo_root/dot_config/bash/completions/init" bash --noprofile --norc -c 'source "$COMPLETION_SOURCE"; COMP_WORDS=(devpod s); COMP_CWORD=1; __dotfiles_complete devpod s devpod; [[ ${COMPREPLY[*]} == *ssh* ]]' 2>&1)"
 [[ -z $fallback_output ]] || { printf 'Bash completion check failed: an unavailable cache path printed output\n' >&2; exit 1; }
 
 mkdir -p "$temporary_dir/empty/bin"

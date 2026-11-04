@@ -2,7 +2,9 @@
 bleopt complete_menu_complete=1
 bleopt complete_menu_filter=1
 bleopt complete_auto_complete=1
-bleopt complete_auto_delay=250
+# Start suggestions without an intentional wait; CLI providers run on Tab.
+bleopt complete_auto_delay=0
+bleopt complete_menu_maxlines=10
 
 # Keep Vim editing without the extra mode banner below the prompt.
 blehook/eval-after-load keymap_vi 'bleopt keymap_vi_mode_show='

@@ -6,7 +6,6 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 external="$repo_root/.chezmoiexternals/blesh.toml"
 bashrc="$repo_root/dot_bashrc"
 config="$repo_root/dot_config/blesh/init.sh"
-completions="$repo_root/dot_config/bash/completions/init"
 readme="$repo_root/README.md"
 
 fail() {
@@ -28,11 +27,8 @@ attach_line="$(grep -nF '[[ ${BLE_VERSION-} ]] && ble-attach' "$bashrc" | cut -d
 grep -Fq "bind -x '\"\\C-l\":clear'" "$bashrc" || fail 'Ctrl-L binding missing'
 grep -Fq '/usr/share/bash-completion/bash_completion' "$bashrc" || fail 'bash-completion source missing'
 grep -Fq 'source -- "$HOME/.config/bash/completions/init"' "$bashrc" || fail 'Bash completion providers are not loaded'
-grep -Fq 'command kubectl completion bash' "$completions" || fail 'native kubectl completion is not loaded directly'
-grep -Fq 'complete -o default -F __start_kubectl k' "$completions" || fail 'kubectl alias completion is missing'
-if grep -Fq '__dotfiles_load_kubectl_completion' "$bashrc" "$completions"; then
-    fail 'lazy kubectl completion is still configured'
-fi
+# Candidate correctness, lazy loading, and cache behavior are exercised by
+# check-bash-completions; do not require eager generation here.
 grep -Fq '[[ -z ${SSH_AUTH_SOCK:-} && -r "$HOME/.ssh/id_ed25519" ]]' "$bashrc" || fail 'SSH agent startup is not guarded by an inherited socket and key file'
 grep -Fq 'tmux set-environment -g SSH_AUTH_SOCK "$SSH_AUTH_SOCK"' "$bashrc" || fail 'SSH agent socket is not shared with future tmux panes'
 
@@ -40,7 +36,7 @@ for setting in \
     'complete_menu_complete=1' \
     'complete_menu_filter=1' \
     'complete_auto_complete=1' \
-    'complete_auto_delay=250' \
+    'complete_auto_delay=0' \
     'exec_elapsed_mark=' \
     'exec_errexit_mark=' \
     "prompt_eol_mark=''"; do

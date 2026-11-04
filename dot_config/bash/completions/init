@@ -1,163 +1,180 @@
-# Load kubectl's completion from the installed CLI so aliases use its native
-# resource, object, namespace, and flag candidates.
-if type -P kubectl >/dev/null 2>&1; then
-    if __dotfiles_kubectl_completion="$(command kubectl completion bash 2>/dev/null)"; then
-        eval "$__dotfiles_kubectl_completion"
-    fi
-    unset __dotfiles_kubectl_completion
-
-    if declare -F __start_kubectl >/dev/null 2>&1; then
-        complete -o default -F __start_kubectl k
-    fi
-fi
-
-# Prefer each CLI's own completion for commands and flags. The wrappers below
-# add only runtime objects that the native providers do not enumerate.
-if type -P devpod >/dev/null 2>&1; then
-    __dotfiles_load_devpod_completion() {
-        local executable cache_dir cache_file temporary_file cache_key
-
-        executable="$(type -P devpod 2>/dev/null)" || return 1
-        [[ -n $executable ]] || return 1
-        cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/bash/completions"
-        cache_key=${executable//\//_}
-        cache_file="$cache_dir/devpod${cache_key}.bash"
-
-        # Generating DevPod's Cobra completion takes hundreds of milliseconds.
-        # Cache it by executable path and refresh it when that binary changes.
-        if [[ ! -r $cache_file || $executable -nt $cache_file ]]; then
-            if ! command mkdir -p -- "$cache_dir" 2>/dev/null || [[ ! -w $cache_dir ]]; then
-                if __dotfiles_devpod_completion="$(command devpod completion bash 2>/dev/null)"; then
-                    eval "$__dotfiles_devpod_completion"
-                fi
-                unset __dotfiles_devpod_completion
-                return
-            fi
-
-            temporary_file="$cache_file.$$"
-            if command devpod completion bash >"$temporary_file" 2>/dev/null && [[ -s $temporary_file ]]; then
-                command mv -f -- "$temporary_file" "$cache_file" 2>/dev/null || command rm -f -- "$temporary_file" 2>/dev/null || :
-            else
-                command rm -f -- "$temporary_file" 2>/dev/null || :
-            fi
+# Register cheap dispatchers at startup. Generate and parse native completion
+# scripts only on explicit completion, reusing them across shells until the
+# executable changes. Never invoke the interactive herdr() launcher here.
+__dotfiles_load_completion() {
+    local tool=$1 executable resolved cache_dir cache_file cache_key temporary_file generated
+    executable="$(type -P "$tool" 2>/dev/null)" || return 1
+    # Mise shims keep the same path when the selected tool changes. Resolve
+    # the active binary (or the external fallback) before choosing a cache key.
+    if [[ $executable == */shims/"$tool" ]] && command -v mise >/dev/null 2>&1; then
+        resolved=$(command mise which "$tool" 2>/dev/null) || resolved=
+        if [[ -z $resolved ]]; then
+            while IFS= read -r resolved; do
+                [[ $resolved == */shims/"$tool" ]] || break
+                resolved=
+            done < <(type -aP "$tool")
         fi
+        [[ -z $resolved ]] || executable=$resolved
+    fi
+    cache_key=${executable//%/%25}
+    cache_key=${cache_key//\//%2F}
+    cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/bash/completions"
+    cache_file="$cache_dir/$tool-$cache_key.bash"
 
-        [[ -r $cache_file ]] || return 1
+    if [[ -s $cache_file && ! $executable -nt $cache_file ]]; then
         source -- "$cache_file"
-    }
+        return
+    fi
 
-    __dotfiles_load_devpod_completion || :
-    unset -f __dotfiles_load_devpod_completion
-
-    if declare -F __start_devpod >/dev/null 2>&1; then
-        __dotfiles_devpod_complete() {
-            local current candidate
-            local -a native_replies=() workspace_ids=()
-
-            __start_devpod || :
-            native_replies=("${COMPREPLY[@]}")
-
-            if [[ ${COMP_WORDS[1]-} != ssh || ${COMP_CWORD:-0} -ne 2 ]]; then
+    if command mkdir -p -- "$cache_dir" 2>/dev/null &&
+        temporary_file=$(command mktemp "$cache_dir/.$tool.XXXXXXXX" 2>/dev/null); then
+        if "$executable" completion bash >"$temporary_file" 2>/dev/null &&
+            [[ -s $temporary_file ]] && command bash -n "$temporary_file" 2>/dev/null; then
+            if command mv -f -- "$temporary_file" "$cache_file" 2>/dev/null; then
+                source -- "$cache_file"
                 return
             fi
-
-            current=${COMP_WORDS[COMP_CWORD]-}
-            [[ $current == -* ]] && return
-            # This argument names a workspace, so don't offer local paths if
-            # DevPod is unavailable or has no matching workspace.
-            compopt +o default +o bashdefault 2>/dev/null || :
-
-            # DevPod can list remote Pro workspaces too. --skip-pro keeps Tab
-            # completion local and avoids network-dependent lookups.
-            if command -v jq >/dev/null 2>&1; then
-                if [[ ! ${__dotfiles_devpod_cache_at+x} || $((SECONDS - __dotfiles_devpod_cache_at)) -ge 30 ]]; then
-                    __dotfiles_devpod_workspace_cache=()
-                    while IFS= read -r candidate; do
-                        [[ -n $candidate ]] && __dotfiles_devpod_workspace_cache+=("$candidate")
-                    done < <(command devpod list --skip-pro --output json --silent 2>/dev/null | command jq -r '.[].id? // empty' 2>/dev/null)
-                    __dotfiles_devpod_cache_at=$SECONDS
-                fi
-                workspace_ids=("${__dotfiles_devpod_workspace_cache[@]-}")
-            fi
-
-            COMPREPLY=("${native_replies[@]}")
-            for candidate in "${workspace_ids[@]}"; do
-                [[ $candidate == "$current"* ]] || continue
-                [[ " ${COMPREPLY[*]} " == *" $candidate "* ]] || COMPREPLY+=("$candidate")
-            done
-        }
-        complete -o default -F __dotfiles_devpod_complete devpod
+            # Completion still works if the cache cannot be published.
+            source -- "$temporary_file"
+            command rm -f -- "$temporary_file" 2>/dev/null || :
+            return 0
+        fi
+        command rm -f -- "$temporary_file" 2>/dev/null || :
+        return 1
     fi
-fi
 
-if type -P herdr >/dev/null 2>&1; then
-    # Use the executable explicitly: ~/.bashrc defines a herdr() launcher that
-    # runs update checks and is unsuitable while Bash generates completions.
-    if __dotfiles_herdr_completion="$(command herdr completion bash 2>/dev/null)"; then
-        eval "$__dotfiles_herdr_completion"
-    fi
-    unset __dotfiles_herdr_completion
+    # Read-only or unavailable cache: generate for this shell only.
+    generated=$("$executable" completion bash 2>/dev/null) || return 1
+    [[ -n $generated ]] || return 1
+    command bash -n <<<"$generated" 2>/dev/null || return 1
+    eval "$generated"
+}
 
-    if declare -F _herdr >/dev/null 2>&1; then
-        __dotfiles_herdr_complete() {
-            local current candidate prefix
-            local -a native_replies=() session_names=()
-
-            _herdr "$@" || :
-            native_replies=("${COMPREPLY[@]}")
-
-            if [[ ${COMP_WORDS[1]-} == --session && ${COMP_CWORD:-0} -eq 2 ]]; then
-                current=${COMP_WORDS[COMP_CWORD]-}
-                prefix=$current
-            elif [[ ${COMP_WORDS[1]-} == --session=* && ${COMP_CWORD:-0} -eq 1 ]]; then
-                current=${COMP_WORDS[1]}
-                prefix=${current#--session=}
-            else
-                return
-            fi
-
-            # Herdr's generated provider treats --session values as file
-            # paths. Replace those candidates with actual session names.
-            native_replies=()
-            compopt +o default +o bashdefault 2>/dev/null || :
-
-            if command -v jq >/dev/null 2>&1; then
-                while IFS= read -r candidate; do
-                    [[ -n $candidate ]] && session_names+=("$candidate")
-                done < <(command herdr session list --json 2>/dev/null | command jq -r '.sessions[]?.name // empty' 2>/dev/null)
-            fi
-
-            COMPREPLY=("${native_replies[@]}")
-            for candidate in "${session_names[@]}"; do
-                [[ $candidate == "$prefix"* ]] || continue
-                if [[ ${COMP_WORDS[1]-} == --session=* ]]; then
-                    candidate="--session=$candidate"
-                    compopt -o nospace 2>/dev/null || :
+__dotfiles_complete() {
+    local tool=${1##*/} variable provider registration
+    [[ $tool != k ]] || tool=kubectl
+    case $tool in kubectl|devpod|herdr|flux|mise) ;; *) return 0 ;; esac
+    COMPREPLY=()
+    # ble.sh can request programmable completion while typing. Keep CLI and
+    # live-resource lookups on explicit Tab; history suggestions remain enabled.
+    [[ ${BLE_ATTACHED-} && :${comp_type-}: == *:auto:* ]] && return 0
+    variable=__dotfiles_completion_$tool
+    provider=${!variable-}
+    if [[ -z $provider ]]; then
+        if ! __dotfiles_load_completion "$tool"; then
+            complete -o default -F __dotfiles_complete "$tool"
+            return 0
+        fi
+        case $tool in
+            devpod) complete -o default -F __dotfiles_devpod_complete devpod ;;
+            herdr)
+                if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+                    complete -o nosort -o bashdefault -o default -F __dotfiles_herdr_complete herdr
+                else
+                    complete -o bashdefault -o default -F __dotfiles_herdr_complete herdr
                 fi
-                [[ " ${COMPREPLY[*]} " == *" $candidate "* ]] || COMPREPLY+=("$candidate")
-            done
-        }
-
-        if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
-            complete -o nosort -o bashdefault -o default -F __dotfiles_herdr_complete herdr
-        else
-            complete -o bashdefault -o default -F __dotfiles_herdr_complete herdr
+                ;;
+        esac
+        registration=$(complete -p "$tool" 2>/dev/null) || return 0
+        [[ $registration =~ -F[[:space:]]+([^[:space:]]+) ]] || return 0
+        provider=${BASH_REMATCH[1]}
+        [[ $provider != __dotfiles_complete ]] || return 0
+        printf -v "$variable" '%s' "$provider"
+        # Preserve the provider's options while retaining the automatic-request
+        # guard after loading. Native completion may adjust options via compopt.
+        eval "${registration/-F $provider/-F __dotfiles_complete}"
+        if [[ $tool == kubectl ]]; then
+            registration=${registration% kubectl}
+            eval "${registration/-F $provider/-F __dotfiles_complete} k"
         fi
     fi
-fi
+    "$provider" "$@" || :
+}
 
-# Load Flux's native command and resource completions when the CLI is installed.
-if type -P flux >/dev/null 2>&1; then
-    if __dotfiles_flux_completion="$(command flux completion bash 2>/dev/null)"; then
-        eval "$__dotfiles_flux_completion"
-    fi
-    unset __dotfiles_flux_completion
-fi
+__dotfiles_devpod_complete() {
+    local current candidate
+    local -a workspace_ids=()
 
-# Mise activation adds tools to PATH; this registers their CLI completions.
-if type -P mise >/dev/null 2>&1; then
-    if __dotfiles_mise_completion="$(command mise completion bash 2>/dev/null)"; then
-        eval "$__dotfiles_mise_completion"
+    current=${COMP_WORDS[COMP_CWORD]-}
+    if [[ ${COMP_WORDS[1]-} != ssh || ${COMP_CWORD:-0} -ne 2 || $current == -* ]]; then
+        __start_devpod || :
+        return
     fi
-    unset __dotfiles_mise_completion
-fi
+
+    # Native Cobra completion starts DevPod again. Workspace arguments use
+    # our cached list directly; flags and other arguments retain native logic.
+    # This argument names a workspace, so don't offer local paths if
+    # DevPod is unavailable or has no matching workspace.
+    compopt +o default +o bashdefault 2>/dev/null || :
+
+    # DevPod can list remote Pro workspaces too. --skip-pro keeps Tab
+    # completion local and avoids network-dependent lookups.
+    if command -v jq >/dev/null 2>&1; then
+        if [[ ! ${__dotfiles_devpod_cache_at+x} || $((SECONDS - __dotfiles_devpod_cache_at)) -ge 30 ]]; then
+            __dotfiles_devpod_workspace_cache=()
+            while IFS= read -r candidate; do
+                [[ -n $candidate ]] && __dotfiles_devpod_workspace_cache+=("$candidate")
+            done < <(command devpod list --skip-pro --output json --silent 2>/dev/null | command jq -r '.[].id? // empty' 2>/dev/null)
+            __dotfiles_devpod_cache_at=$SECONDS
+        fi
+        workspace_ids=("${__dotfiles_devpod_workspace_cache[@]-}")
+    fi
+
+    COMPREPLY=()
+    for candidate in "${workspace_ids[@]}"; do
+        [[ $candidate == "$current"* ]] || continue
+        [[ " ${COMPREPLY[*]} " == *" $candidate "* ]] || COMPREPLY+=("$candidate")
+    done
+}
+
+__dotfiles_herdr_complete() {
+    local current candidate prefix
+    local -a session_names=()
+
+    if [[ ${COMP_WORDS[1]-} == --session && ${COMP_CWORD:-0} -eq 2 ]]; then
+        current=${COMP_WORDS[COMP_CWORD]-}
+        prefix=$current
+    elif [[ ${COMP_WORDS[1]-} == --session=* && ${COMP_CWORD:-0} -eq 1 ]]; then
+        current=${COMP_WORDS[1]}
+        prefix=${current#--session=}
+    else
+        _herdr "$@" || :
+        return
+    fi
+
+    # Herdr's generated provider treats --session values as file
+    # paths. Replace those candidates with actual session names.
+    compopt +o default +o bashdefault 2>/dev/null || :
+
+    if command -v jq >/dev/null 2>&1; then
+        if [[ ! ${__dotfiles_herdr_cache_at+x} || $((SECONDS - __dotfiles_herdr_cache_at)) -ge 30 ]]; then
+            __dotfiles_herdr_session_cache=()
+            while IFS= read -r candidate; do
+                [[ -n $candidate ]] && __dotfiles_herdr_session_cache+=("$candidate")
+            done < <(command herdr session list --json 2>/dev/null | command jq -r '.sessions[]?.name // empty' 2>/dev/null)
+            __dotfiles_herdr_cache_at=$SECONDS
+        fi
+        session_names=("${__dotfiles_herdr_session_cache[@]-}")
+    fi
+
+    COMPREPLY=()
+    for candidate in "${session_names[@]}"; do
+        [[ $candidate == "$prefix"* ]] || continue
+        if [[ ${COMP_WORDS[1]-} == --session=* ]]; then
+            candidate="--session=$candidate"
+            compopt -o nospace 2>/dev/null || :
+        fi
+        [[ " ${COMPREPLY[*]} " == *" $candidate "* ]] || COMPREPLY+=("$candidate")
+    done
+}
+
+for __dotfiles_completion_tool in kubectl devpod herdr flux mise; do
+    if type -P "$__dotfiles_completion_tool" >/dev/null 2>&1; then
+        unset "__dotfiles_completion_$__dotfiles_completion_tool"
+        complete -o default -F __dotfiles_complete "$__dotfiles_completion_tool"
+        if [[ $__dotfiles_completion_tool == kubectl ]]; then
+            complete -o default -F __dotfiles_complete k
+        fi
+    fi
+done
+unset __dotfiles_completion_tool
