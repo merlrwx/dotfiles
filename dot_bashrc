@@ -7,7 +7,7 @@
 
 # Load ble.sh early so it can integrate with the rest of this interactive shell.
 if [[ -r "$HOME/.local/share/blesh/ble.sh" ]]; then
-    source -- "$HOME/.local/share/blesh/ble.sh" --attach=none
+    source -- "$HOME/.local/share/blesh/ble.sh" --attach=prompt
 fi
 
 # Use vi-style editing in the shell
@@ -163,9 +163,21 @@ if [[ -z "$TMUX" ]] && [[ "$TERM" == "alacritty" ]]; then
     exec tmux new-session -s main
 fi
 
-# starship
+# Remote identity is constant for this shell: avoid a subprocess on each prompt.
+if [[ -n ${REMOTE_CONTAINERS:-} ]]; then
+    export DOTFILES_REMOTE_HOST="${DEVPOD_WORKSPACE_ID:-${HOSTNAME%%.*}}"
+else
+    unset DOTFILES_REMOTE_HOST
+fi
+
+# Starship renders the prompt; use ble.sh's hooks without extra timer/right-prompt
+# processes. Keep upstream initialization as a fallback without modern ble.sh.
 if command -v starship >/dev/null 2>&1; then
-  eval "$(starship init bash)"
+    if [[ ${BLE_VERSION-} && ${EPOCHREALTIME-} && -r "$HOME/.config/bash/starship" ]]; then
+        source -- "$HOME/.config/bash/starship"
+    else
+        eval "$(starship init bash)"
+    fi
 fi
 
 # Docker helpers
@@ -209,5 +221,5 @@ if [[ -t 1 ]] && command -v dotfiles-banner >/dev/null 2>&1; then
     fi
 fi
 
-# Attach after shell configuration and prompt integrations are initialized.
-[[ ${BLE_VERSION-} ]] && ble-attach
+# ble.sh attaches at the first prompt, after all prompt hooks are registered.
+# This avoids drawing and initializing the prompt twice during startup.

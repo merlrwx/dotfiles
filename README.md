@@ -283,15 +283,30 @@ client.
 
 Bash uses ble.sh for interactive editing and completion, including syntax
 highlighting, suggestions, and the navigable menu; Starship owns the prompt and
-uses a portable ASCII `>` plus a parenthesized branch such as `(main)`. `cat`
+uses a portable ASCII `>` alongside the current branch. `cat`
 uses `bat` and the `ls` family uses `lsd` when those Mise tools are installed.
-Git status appears as colored labels when relevant: `+` staged, `!` modified, `?`
-untracked, `^` ahead, `v` behind, and `<>` diverged; `up to date` means the
-branch matches its remote. Conflicts, renames, deletions, type changes, and
-stashes are named as well. Register native Bash providers in
-`~/.config/bash/completions/init` with `command <tool> completion bash`; Flux
-and Mise completions are loaded there when those tools are installed. Add
-wrappers there when runtime candidates are missing.
+Git status appears as colored symbols when relevant: `+` staged, `~` modified,
+`?` untracked, `⇡` ahead, `⇣` behind, and `⇕` diverged. Register native Bash
+providers in `~/.config/bash/completions/init`; their generated scripts are
+cached by executable path and modification time, then loaded on explicit Tab.
+Automatic suggestions have no intentional delay and avoid these CLI lookups.
+DevPod workspace and Herdr session lists are cached for 30 seconds.
+
+On Bash 5+ with ble.sh, `~/.config/bash/starship` uses the editor's hooks and
+Bash's clock to render Starship once per prompt, without separate timer or
+unused right-prompt processes. This integration matches the left-only prompt
+in `starship.toml`; use upstream `starship init bash` if adding a right prompt
+or jobs module. Upstream initialization remains the fallback without ble.sh or
+the Bash clock. Remote identity is exported once per shell instead of running
+shell commands on every prompt. ble.sh attaches at the first prompt and batches
+palette setup; its editing, highlighting, and completion features remain enabled.
+
+Measure actual interactive startup with `tests/benchmark-bash-startup --samples 5`;
+add `--tmux` to include an isolated tmux server/client. The benchmark reports
+first visible prompt, first command execution from launch, and steady prompt
+round trips separately. It does not measure Alacritty's GUI startup. Open a new
+terminal or run `exec bash` after applying startup changes.
+
 At an idle prompt, Ctrl+C cancels the current line in both vi editing modes. The
 `k` alias retains kubectl completion, Fabric pattern aliases are generated from
 installed pattern names, and `yt` requests a video transcript. At interactive

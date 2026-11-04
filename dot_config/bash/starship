@@ -1,0 +1,36 @@
+# Starship supplies the renderer; ble.sh supplies lifecycle hooks and output
+# capture without an extra subshell. This matches our left-only starship.toml:
+# no jobs module or right prompt needs a second renderer invocation.
+__dotfiles_starship_exe=$(type -P starship)
+export STARSHIP_SHELL=bash
+STARSHIP_SESSION_KEY=${RANDOM}${RANDOM}${RANDOM}${RANDOM}0000000000000000
+export STARSHIP_SESSION_KEY=${STARSHIP_SESSION_KEY:0:16}
+PS2="$("$__dotfiles_starship_exe" prompt --continuation)"
+
+# Bash already exposes a microsecond clock; launching `starship time` before
+# and after every command adds process startup without improving the clock.
+__dotfiles_starship_preexec() {
+    __dotfiles_starship_started=${EPOCHREALTIME/./}
+}
+__dotfiles_starship_postexec() {
+    local now=${EPOCHREALTIME/./}
+    __dotfiles_starship_duration=$(((now - ${__dotfiles_starship_started:-now}) / 1000))
+    # Wall-clock corrections should not produce a negative command duration.
+    ((__dotfiles_starship_duration >= 0)) || __dotfiles_starship_duration=0
+}
+__dotfiles_starship_precmd() {
+    local status=$? pipeline=("${PIPESTATUS[@]}")
+    if [[ ${BLE_ATTACHED-} && ${#BLE_PIPESTATUS[@]} -gt 0 ]]; then
+        pipeline=("${BLE_PIPESTATUS[@]}")
+    fi
+    ble/util/assign PS1 '"$__dotfiles_starship_exe" prompt --terminal-width="${COLUMNS:-80}" --status="$status" --pipestatus="${pipeline[*]}" --cmd-duration="${__dotfiles_starship_duration:-0}" --shlvl="$SHLVL"'
+    return "$status"
+}
+# Re-sourcing .bashrc must replace earlier native Starship hooks, not duplicate
+# them. Keep unrelated hooks (including Mise's environment handling) intact.
+blehook PREEXEC-='starship_preexec "$_"'
+blehook PRECMD-=starship_precmd
+bleopt prompt_rps1=
+blehook PREEXEC!=__dotfiles_starship_preexec
+blehook POSTEXEC!=__dotfiles_starship_postexec
+blehook PRECMD!=__dotfiles_starship_precmd

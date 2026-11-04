@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+temporary_dir="$(mktemp -d)"
+trap 'rm -rf -- "$temporary_dir"' EXIT
+mkdir "$temporary_dir/bin"
+cat >"$temporary_dir/bin/starship" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STARSHIP_TEST_LOG"
+if [[ $1 == init && $2 == bash ]]; then
+    printf 'PS1=native-fallback\n'
+    exit 0
+fi
+[[ $1 == prompt ]] || exit 1
+printf 'rendered-prompt'
+MOCK
+chmod +x "$temporary_dir/bin/starship"
+PATH="$temporary_dir/bin:$PATH" STARSHIP_TEST_LOG="$temporary_dir/calls" \
+    bash --noprofile --norc -s "$repo_root/dot_config/bash/starship" <<'BASH'
+set -uo pipefail
+fail() { printf 'Starship check failed: %s\n' "$1" >&2; exit 1; }
+declare -A hooks=()
+blehook() {
+    local key=${1%%!*} value=${1#*=}
+    key=${key%%-*}
+    if [[ $1 == *'!='* ]]; then hooks[$key]=$value; fi
+}
+bleopt() { :; }
+ble/util/assign() { printf -v "$1" '%s' "$(eval "$2")"; }
+source "$1"
+source "$1"
+[[ ${hooks[PREEXEC]} == __dotfiles_starship_preexec ]] || fail 'preexec hook missing'
+[[ ${hooks[POSTEXEC]} == __dotfiles_starship_postexec ]] || fail 'postexec hook missing'
+[[ ${hooks[PRECMD]} == __dotfiles_starship_precmd ]] || fail 'precmd hook missing'
+[[ $PS2 == rendered-prompt ]] || fail 'native continuation prompt lost'
+[[ $STARSHIP_SHELL == bash ]] || fail 'shell escaping not configured'
+: >"$STARSHIP_TEST_LOG"
+BLE_ATTACHED=1 BLE_PIPESTATUS=(1 0)
+COLUMNS=123
+__dotfiles_starship_started=$((${EPOCHREALTIME/./} - 2500000))
+__dotfiles_starship_postexec
+((__dotfiles_starship_duration >= 2500 && __dotfiles_starship_duration < 3000)) || fail 'duration is not milliseconds'
+(exit 7)
+__dotfiles_starship_precmd
+[[ $? == 7 ]] || fail 'command status was not preserved'
+[[ $PS1 == rendered-prompt ]] || fail 'prompt was not rendered'
+mapfile -t calls <"$STARSHIP_TEST_LOG"
+[[ ${#calls[@]} == 1 ]] || fail 'more than one renderer invocation per prompt'
+[[ ${calls[0]} == *'--status=7'* && ${calls[0]} == *'--pipestatus=1 0'* ]] || fail 'status/pipeline arguments lost'
+[[ ${calls[0]} == *'--terminal-width=123'* && ${calls[0]} == *'--cmd-duration=25'* ]] || fail 'width/duration arguments lost'
+[[ ${calls[0]} != *--right* ]] || fail 'unused right prompt rendered'
+__dotfiles_starship_started=$((${EPOCHREALTIME/./} + 10000000))
+__dotfiles_starship_postexec
+[[ $__dotfiles_starship_duration == 0 ]] || fail 'clock correction produced negative duration'
+BASH
+mkdir "$temporary_dir/home"
+PATH="$temporary_dir/bin:/usr/bin:/bin" HOME="$temporary_dir/home" TERM=dumb \
+    STARSHIP_TEST_LOG="$temporary_dir/calls" \
+    bash --noprofile --rcfile "$repo_root/dot_bashrc" -ic \
+    '[[ $PS1 == native-fallback ]]' 2>"$temporary_dir/stderr"
+printf 'Starship hook checks passed.\n'

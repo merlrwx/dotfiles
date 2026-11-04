@@ -18,11 +18,10 @@ grep -Fq 'refreshPeriod = "168h"' "$external" || fail 'weekly external refresh m
 grep -Fq 'stripComponents = 1' "$external" || fail 'archive root is not stripped'
 
 guard_line="$(grep -nF '[[ $- != *i* ]] && return' "$bashrc" | cut -d: -f1)"
-load_line="$(grep -nF 'source -- "$HOME/.local/share/blesh/ble.sh" --attach=none' "$bashrc" | cut -d: -f1)"
+load_line="$(grep -nF 'source -- "$HOME/.local/share/blesh/ble.sh" --attach=prompt' "$bashrc" | cut -d: -f1)"
 vi_line="$(grep -nF 'set -o vi' "$bashrc" | cut -d: -f1)"
 starship_line="$(grep -nF 'eval "$(starship init bash)"' "$bashrc" | cut -d: -f1)"
-attach_line="$(grep -nF '[[ ${BLE_VERSION-} ]] && ble-attach' "$bashrc" | cut -d: -f1)"
-[[ "$guard_line" -lt "$load_line" && "$load_line" -lt "$vi_line" && "$vi_line" -lt "$starship_line" && "$starship_line" -lt "$attach_line" ]] || fail 'interactive initialization order is incorrect'
+[[ "$guard_line" -lt "$load_line" && "$load_line" -lt "$vi_line" && "$vi_line" -lt "$starship_line" ]] || fail 'interactive initialization order is incorrect'
 
 grep -Fq "bind -x '\"\\C-l\":clear'" "$bashrc" || fail 'Ctrl-L binding missing'
 grep -Fq '/usr/share/bash-completion/bash_completion' "$bashrc" || fail 'bash-completion source missing'

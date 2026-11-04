@@ -2,8 +2,11 @@
 
 # Gruvbox Material Dark Hard: terminal background #1d2021, foreground #d4be98.
 
+# The Bash integration renders only this left prompt.
+right_format = ''
+
 format = """
-($username$hostname${custom.remote_host} )\
+($username$hostname${env_var.DOTFILES_REMOTE_HOST} )\
 $directory\
 $git_branch\
 $git_status\
@@ -22,12 +25,10 @@ detect_env_vars = ["REMOTE_CONTAINERS"]
 format = '[@$hostname]($style)'
 style = "#928374"
 
-[custom.remote_host]
-command = 'printf "%s" "${DEVPOD_WORKSPACE_ID:-$(hostname -s)}"'
-when = 'test -n "$REMOTE_CONTAINERS"'
-format = '[@$output]($style)'
+# Set once by Bash instead of launching a shell for both `when` and `command`.
+[env_var.DOTFILES_REMOTE_HOST]
+format = '[@$env_value]($style)'
 style = "#928374"
-os = "linux"
 
 [directory]
 style = "#d4be98"

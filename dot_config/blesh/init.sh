@@ -14,37 +14,39 @@ ble-bind -m vi_imap -f 'C-c' discard-line
 ble-bind -m vi_nmap -f 'C-c' discard-line
 
 # Gruvbox Material Dark Hard accents, coordinated with the Alacritty palette.
-ble-face -s syntax_default fg=#d4be98
-ble-face -s syntax_command fg=#a9b665
-ble-face -s syntax_quoted fg=#89b482
-ble-face -s syntax_quotation fg=#d8a657
-ble-face -s syntax_escape fg=#d3869b
-ble-face -s syntax_expr fg=#7daea3
-ble-face -s syntax_error fg=#ea6962,bg=#442e2d
-ble-face -s syntax_varname fg=#d3869b
-ble-face -s syntax_param_expansion fg=#d3869b
-ble-face -s syntax_history_expansion fg=#d8a657
-ble-face -s syntax_function_name fg=#89b482
-ble-face -s syntax_comment fg=#a89984
-ble-face -s syntax_glob fg=#d8a657
-ble-face -s syntax_brace fg=#89b482
-ble-face -s syntax_tilde fg=#d8a657
-ble-face -s syntax_document fg=#a9b665
-ble-face -s syntax_document_begin fg=#a9b665
-ble-face -s command_builtin fg=#a9b665
-ble-face -s command_builtin_dot fg=#a9b665
-ble-face -s command_alias fg=#7daea3
-ble-face -s command_function fg=#89b482
-ble-face -s command_file fg=#a9b665
-ble-face -s command_keyword fg=#e78a4e
-ble-face -s command_jobs fg=#d3869b
-ble-face -s command_directory fg=#7daea3
-ble-face -s filename_directory fg=#7daea3
-ble-face -s filename_directory_sticky fg=#d4be98,bg=#32302f
-ble-face -s auto_complete fg=#928374,bg=#282828
-ble-face -s menu_complete_match fg=#d8a657
-ble-face -s menu_complete_selected fg=#d4be98,bg=#504945
-ble-face -s menu_filter_input fg=#d4be98,bg=#282828
+# Batch palette changes to avoid repeating option setup for every face.
+ble-face \
+    -s syntax_default fg=#d4be98 \
+    -s syntax_command fg=#a9b665 \
+    -s syntax_quoted fg=#89b482 \
+    -s syntax_quotation fg=#d8a657 \
+    -s syntax_escape fg=#d3869b \
+    -s syntax_expr fg=#7daea3 \
+    -s syntax_error fg=#ea6962,bg=#442e2d \
+    -s syntax_varname fg=#d3869b \
+    -s syntax_param_expansion fg=#d3869b \
+    -s syntax_history_expansion fg=#d8a657 \
+    -s syntax_function_name fg=#89b482 \
+    -s syntax_comment fg=#a89984 \
+    -s syntax_glob fg=#d8a657 \
+    -s syntax_brace fg=#89b482 \
+    -s syntax_tilde fg=#d8a657 \
+    -s syntax_document fg=#a9b665 \
+    -s syntax_document_begin fg=#a9b665 \
+    -s command_builtin fg=#a9b665 \
+    -s command_builtin_dot fg=#a9b665 \
+    -s command_alias fg=#7daea3 \
+    -s command_function fg=#89b482 \
+    -s command_file fg=#a9b665 \
+    -s command_keyword fg=#e78a4e \
+    -s command_jobs fg=#d3869b \
+    -s command_directory fg=#7daea3 \
+    -s filename_directory fg=#7daea3 \
+    -s filename_directory_sticky fg=#d4be98,bg=#32302f \
+    -s auto_complete fg=#928374,bg=#282828 \
+    -s menu_complete_match fg=#d8a657 \
+    -s menu_complete_selected fg=#d4be98,bg=#504945 \
+    -s menu_filter_input fg=#d4be98,bg=#282828
 
 # Starship already presents command duration and failure status.
 bleopt exec_elapsed_mark=

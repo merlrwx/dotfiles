@@ -22,6 +22,7 @@ shared_paths=(
     .config/mise/mise.lock
     .config/bash/aliases
     .config/bash/completions/init
+    .config/bash/starship
     .local/bin/dotfiles-banner
     .local/bin/agent-worker
     .local/share/blesh/ble.sh
