@@ -462,9 +462,11 @@ backend = "vfox:jdx/vfox-neovim"
 specifiers = ["0.12.5"]
 
 [tools.neovim."platforms.linux-arm64"]
+checksum = "sha256:1aa5ca085249580ae0f91eb14f27ec0919773ff2d99a163d03f3d6c21ac29725"
 url = "https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-linux-arm64.tar.gz"
 
 [tools.neovim."platforms.linux-x64"]
+checksum = "sha256:bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875"
 url = "https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-linux-x86_64.tar.gz"
 
 [[tools.node]]
