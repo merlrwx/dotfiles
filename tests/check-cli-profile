@@ -216,7 +216,7 @@ for package in xclip wl-clipboard; do
         exit 1
     fi
 done
-for package in docker.io moby-engine docker-cli openssh-client openssh-clients curl; do
+for package in docker.io podman podman-docker openssh-client openssh-clients curl; do
     if ! grep -Fq "$package" "$cli_dependencies_script"; then
         printf 'CLI dependency installer is missing shared package: %s\n' "$package" >&2
         exit 1

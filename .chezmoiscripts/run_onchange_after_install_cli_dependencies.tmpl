@@ -18,7 +18,7 @@ case "${ID:-}" in
         }
         ;;
     fedora)
-        packages=(file gcc make git openssh-clients curl unzip xclip wl-clipboard moby-engine docker-cli)
+        packages=(file gcc make git openssh-clients curl unzip xclip wl-clipboard podman podman-docker)
         package_installed() {
             if [[ "$1" == curl ]]; then
                 rpm -q curl-minimal >/dev/null 2>&1 || rpm -q curl >/dev/null 2>&1
