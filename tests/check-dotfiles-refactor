@@ -84,8 +84,8 @@ completion_init = (root / "dot_config/bash/completions/init").read_text()
 for content in (host_bash, devpod_bash):
     assert "mise activate bash" in content
     assert content.index("mise activate bash") < content.index("completions/init")
-assert "flux completion bash" in completion_init
-assert "mise completion bash" in completion_init
+assert '"$executable" completion bash' in completion_init
+assert "for __dotfiles_completion_tool in kubectl devpod herdr flux mise; do" in completion_init
 
 installer = (root / "install").read_text()
 assert "dot_config/mise/config.toml" in installer
