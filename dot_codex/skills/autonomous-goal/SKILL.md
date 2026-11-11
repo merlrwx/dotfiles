@@ -39,6 +39,9 @@ acceptance assertions fixed and review the changed tests.
 - **Pi:** use `agent-goal start --continuation pi --verify PATH`. The installed Pi
   extension consumes the same lifecycle validator; only one implementation
   agent may occupy an active-goal worktree.
+- **Claude Code:** use `agent-goal start --continuation hook --verify PATH`. The
+  managed Stop hook asks Claude to continue once per stop; resume the goal from
+  `.agent/PROGRESS.md` when a session ends before `agent-goal complete`.
 - **Older Codex:** `--continuation hook` is a compatibility reminder with one
   repeat-stop guard, not an unbounded persistence guarantee. Prefer native goals.
 

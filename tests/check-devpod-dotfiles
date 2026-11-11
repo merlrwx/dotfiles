@@ -81,6 +81,16 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "chmod 0755 \"$CODEX_INSTALL_DIR/codex\"\n"
         "INSTALLER\n"
         "    ;;\n"
+        "  '-fsSL https://claude.ai/install.sh')\n"
+        "    printf 'installed\\n' >>\"$HOME/claude-installer-calls\"\n"
+        "    cat <<'INSTALLER'\n"
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "install -d -m 0755 \"$HOME/.local/bin\"\n"
+        "printf '#!/usr/bin/env bash\\nprintf claude-test\\\\n\\n' >\"$HOME/.local/bin/claude\"\n"
+        "chmod 0755 \"$HOME/.local/bin/claude\"\n"
+        "INSTALLER\n"
+        "    ;;\n"
         "  '-fsSL https://pi.dev/install.sh')\n"
         "    printf 'installed\\n' >>\"$HOME/pi-installer-calls\"\n"
         "    cat <<'INSTALLER'\n"
@@ -169,6 +179,11 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
     shared_instructions = (repo_root / "dot_config/agents/AGENTS.md").read_text()
     assert (home / ".codex/AGENTS.md").read_text() == shared_instructions
     assert (home / ".pi/agent/AGENTS.md").read_text() == shared_instructions
+    assert (home / ".claude/CLAUDE.md").read_text() == shared_instructions
+    assert (home / ".claude/skills/autonomous-goal/SKILL.md").is_file()
+    assert (home / ".claude/skills/project-scaffold/references/selection-rules.md").is_file()
+    assert "default to grilling with docs" in (home / ".claude/skills/grill-me/SKILL.md").read_text()
+    assert (home / "claude-installer-calls").read_text().splitlines() == ["installed"]
     assert (home / ".codex/skills/autonomous-goal/SKILL.md").is_file()
     assert (home / ".pi/agent/skills/autonomous-goal/SKILL.md").is_file()
     assert (home / ".pi/agent/skills/parallel-work/SKILL.md").is_file()
@@ -288,6 +303,9 @@ with TemporaryDirectory(prefix="devpod-existing-codex-") as temp_dir:
     fake_pi = fake_bin / "pi"
     fake_pi.write_text("#!/usr/bin/env bash\nexit 0\n")
     fake_pi.chmod(0o755)
+    fake_claude = fake_bin / "claude"
+    fake_claude.write_text("#!/usr/bin/env bash\nexit 0\n")
+    fake_claude.chmod(0o755)
     local_bin = home / ".local/bin"
     local_bin.mkdir(parents=True)
     fake_mise = local_bin / "mise"

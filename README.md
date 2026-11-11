@@ -4,8 +4,8 @@ Portable configuration for a Fedora Sway desktop and a headless CLI host.
 Chezmoi manages configuration and setup scripts; Mise manages a pinned, locked
 set of shared CLI tools and the Node.js runtime. The host and DevPod use the
 same global Mise config. Both host profiles get the shared shell, development
-tools, Codex, Pi, Herdr, Copier, and DevPod. The `project-scaffold` skill is
-available to Codex and Pi from the shared `~/.codex/skills` directory. Homelab MCP is optional; the desktop
+tools, Codex, Claude Code, Pi, Herdr, Copier, and DevPod. The `project-scaffold` skill is
+available to Codex, Claude Code, and Pi from the shared `~/.codex/skills` directory. Homelab MCP is optional; the desktop
 profile adds GUI configuration.
 
 ## Install
@@ -23,7 +23,7 @@ installs Fedora desktop packages, the IoskeleyMono font, and Gruvbox Material
 themes. The CLI profile uses no host-name-specific role.
 
 If starting from a clone, run `./setup` from the repository. On a new machine,
-sign in to Codex and Pi separately after setup. The root `install` is a
+sign in to Codex, Claude Code, and Pi separately after setup. The root `install` is a
 DevPod dotfiles callback; it installs a lightweight workspace setup and is not
 the host setup command.
 
@@ -165,7 +165,7 @@ devpod context set-options \
 ```
 
 The workspace installer installs the same pinned global Mise tools as the host,
-then adds Codex and Pi, the shared Neovim config, a small Bash overlay, Gruvbox
+then adds Codex, Claude Code, and Pi, the shared Neovim config, a small Bash overlay, Gruvbox
 Material Starship settings, Git defaults, shared agent instructions, and a
 minimal Codex theme config. The Codex theme is seeded only when no user config
 exists. It includes the portable goal commands, Pi continuation extension, and

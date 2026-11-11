@@ -99,11 +99,13 @@ for agent_directory in "$HOME/.codex" "$HOME/.pi/agent"; do
     install -Dm0644 "$dotfiles_root/dot_config/agents/AGENTS.md" \
         "$agent_directory/AGENTS.md"
 done
+install -Dm0644 "$dotfiles_root/dot_config/agents/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 
 while IFS= read -r -d '' skill_file; do
     relative_path="${skill_file#"$dotfiles_root/dot_codex/skills/"}"
     install -Dm0644 "$skill_file" "$HOME/.codex/skills/$relative_path"
     install -Dm0644 "$skill_file" "$HOME/.pi/agent/skills/$relative_path"
+    install -Dm0644 "$skill_file" "$HOME/.claude/skills/$relative_path"
 done < <(find "$dotfiles_root/dot_codex/skills" -type f -print0)
 
 # Keep the portable goal core and Pi adapter available with the installed skills.
@@ -113,10 +115,12 @@ for tool in agent-goal agent-worker; do
 done
 install -Dm0644 "$dotfiles_root/dot_pi/agent/extensions/autonomous-goal.ts" \
     "$HOME/.pi/agent/extensions/autonomous-goal.ts"
-install -Dm0644 "$dotfiles_root/dot_pi/agent/skills/grill-me/SKILL.md" \
-    "$HOME/.pi/agent/skills/grill-me/SKILL.md"
+for skills_directory in "$HOME/.pi/agent/skills" "$HOME/.claude/skills"; do
+    install -Dm0644 "$dotfiles_root/dot_pi/agent/skills/grill-me/SKILL.md" \
+        "$skills_directory/grill-me/SKILL.md"
+done
 
-# ~~~~~~~~~~~~~~~ Codex and Pi workspace setup ~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~ Codex, Claude Code, and Pi workspace setup ~~~~~~~~~~~~~~~~~~~~~~~~
 
 if [[ ! -e "$codex_config" ]]; then
     install -Dm0644 "$dotfiles_root/assets/devpod/codex-config.toml" "$codex_config"
@@ -126,6 +130,10 @@ codex_install_dir="$HOME/.local/bin"
 if ! command -v codex >/dev/null 2>&1 && [[ ! -x "$codex_install_dir/codex" ]]; then
     export CODEX_INSTALL_DIR="$codex_install_dir"
     curl -fsSL https://chatgpt.com/codex/install.sh | sh
+fi
+
+if ! command -v claude >/dev/null 2>&1 && [[ ! -x "$HOME/.local/bin/claude" ]]; then
+    curl -fsSL https://claude.ai/install.sh | bash
 fi
 
 pi_install_dir="$HOME/.pi/agent/bin"

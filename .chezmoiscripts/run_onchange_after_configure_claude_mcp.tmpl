@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Mirror the Codex MCP servers into Claude Code's user scope. Claude stores
+# these in ~/.claude.json alongside runtime state, so register them via its CLI.
+# homelab-mcp: {{ .homelab_mcp_url }}
+# gitnexus: https://gitnexus.home.arpa/api/mcp/
+
+claude_bin="$(command -v claude || true)"
+[[ -n "$claude_bin" ]] || claude_bin="$HOME/.local/bin/claude"
+if [[ ! -x "$claude_bin" ]]; then
+    printf 'Claude Code is not installed; skipping Claude MCP servers.\n' >&2
+    exit 0
+fi
+
+register() {
+    local name=$1 url=$2
+    "$claude_bin" mcp remove --scope user "$name" >/dev/null 2>&1 || true
+    "$claude_bin" mcp add --scope user --transport http "$name" "$url"
+}
+
+register homelab-mcp {{ .homelab_mcp_url | quote }}
+register gitnexus "https://gitnexus.home.arpa/api/mcp/"

@@ -8,14 +8,14 @@ description: Stress-test a plan, design, or decision through a detailed intervie
 Interview the user until you reach a shared understanding of the plan. Map the
 decisions as a design tree: each decision unlocks the decisions that depend on it.
 
-Read the user's plan and inspect relevant repository files with Pi's available
+Read the user's plan and inspect relevant repository files with your available
 tools. Look up facts yourself; ask the user to make decisions. Follow the shared
 agent instructions when deciding whether to delegate an investigation.
 
 In a working repository, default to grilling with docs: inspect existing plans,
 README, CONTEXT.md and relevant design records before questioning the user.
-Read files directly with Pi's tools; do not call a Codex `Skill` tool or load
-instructions from a versioned Codex plugin cache.
+Read files directly with your file tools; do not load instructions from a
+versioned Codex plugin cache.
 
 Record settled terminology in the existing CONTEXT.md and consequential decisions
 in the repository's existing ADR or design-document convention. Update existing

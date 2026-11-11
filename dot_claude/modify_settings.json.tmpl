@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Merge managed Claude Code defaults while preserving local and Herdr settings."""
+import json
+import sys
+
+settings = json.loads(sys.stdin.read() or "{}")
+if not isinstance(settings, dict):
+    raise SystemExit("Claude settings must be a JSON object; settings were not changed")
+
+for key, value in {"model": "opus", "effortLevel": "high"}.items():
+    settings.setdefault(key, value)
+
+# Codex auto-approved these MCP tools; keep the same approvals for Claude Code.
+permissions = settings.setdefault("permissions", {})
+allow = permissions.setdefault("allow", [])
+for rule in [
+    "mcp__homelab-mcp__execute_command",
+    "mcp__homelab-mcp__grafana_list_alerts",
+    "mcp__homelab-mcp__kubernetes_kubectl",
+    "mcp__homelab-mcp__query_homelab",
+    "mcp__homelab-mcp__vault_read_secret",
+    "mcp__homelab-mcp__gitlab_tool",
+    "mcp__homelab-mcp__vault_api_request",
+    "mcp__gitnexus__list_repos",
+]:
+    if rule not in allow:
+        allow.append(rule)
+
+# The portable goal hook speaks Claude Code's Stop-hook protocol. Herdr adds its
+# own SessionStart hook through `herdr integration install claude`.
+goal_command = '"{{ .chezmoi.homeDir }}/.local/bin/agent-goal" hook-stop'
+stop_hooks = settings.setdefault("hooks", {}).setdefault("Stop", [])
+if not any(
+    hook.get("command") == goal_command
+    for group in stop_hooks
+    for hook in group.get("hooks", [])
+):
+    stop_hooks.append({
+        "hooks": [{
+            "type": "command",
+            "command": goal_command,
+            "statusMessage": "Checking autonomous goal state",
+            "timeout": 5,
+        }]
+    })
+
+print(json.dumps(settings, indent=2))

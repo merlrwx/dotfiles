@@ -1,4 +1,4 @@
-# Homelab MCP with Codex and Pi
+# Homelab MCP with Codex, Claude Code, and Pi
 
 Homelab MCP uses Authentik OAuth. Tailscale provides remote network access;
 Codex signs in separately through your browser. Authentication was introduced
@@ -22,6 +22,8 @@ by the September 21, 2026 homelab configuration change, not by a reboot.
 The dotfiles configure the same endpoint in both agent harnesses:
 
 - Codex: `~/.codex/config.toml`
+- Claude Code: user-scoped servers in `~/.claude.json`, registered by
+  `run_onchange_after_configure_claude_mcp`; authenticate with `/mcp`
 - Pi: `~/.pi/agent/mcp.json`
 
 ```toml

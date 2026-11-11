@@ -6,7 +6,7 @@
 - Preserve unrelated work and follow repository patterns.
 - Give each autonomous implementation agent its own Git worktree. An active
   `.agent/ACTIVE` goal has exactly one root implementation agent; never run
-  Codex and Pi together in that worktree.
+  Codex, Claude Code, or Pi together in that worktree.
 - Delegate only when the user explicitly asks. Workers must stay within their assigned task and must not delegate recursively by default.
 - The user has explicitly requested bounded per-repository delegation for
   autonomous implementation goals spanning multiple selected repositories.

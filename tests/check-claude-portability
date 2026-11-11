@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+settings="$repo_root/dot_claude/modify_settings.json.tmpl"
+instructions="$repo_root/dot_claude/CLAUDE.md.tmpl"
+shared_instructions="$repo_root/dot_config/agents/AGENTS.md"
+installer="$repo_root/.chezmoiscripts/run_once_before_install_claude"
+mcp="$repo_root/.chezmoiscripts/run_onchange_after_configure_claude_mcp.tmpl"
+herdr_installer="$repo_root/.chezmoiscripts/run_onchange_after_configure_herdr_codex.tmpl"
+herdr_skill_installer="$repo_root/.chezmoiscripts/run_after_install_herdr_skill"
+codex_config="$repo_root/dot_codex/create_private_config.toml.tmpl"
+
+assert_contains() {
+    if ! grep -Fq -- "$2" "$1"; then
+        printf 'FAIL: %s does not contain %s\n' "$1" "$2" >&2
+        exit 1
+    fi
+}
+
+assert_contains "$installer" 'https://claude.ai/install.sh'
+assert_contains "$herdr_installer" 'herdr integration install claude'
+assert_contains "$herdr_installer" 'dot_claude/modify_settings.json.tmpl'
+assert_contains "$herdr_skill_installer" '.claude/skills/herdr/SKILL.md'
+assert_contains "$mcp" 'register homelab-mcp {{ .homelab_mcp_url | quote }}'
+assert_contains "$mcp" 'register gitnexus'
+
+rendered="$(chezmoi --source "$repo_root" execute-template <"$instructions")"
+if [[ "$rendered" != "$(cat "$shared_instructions")" ]]; then
+    printf 'FAIL: CLAUDE.md does not render the canonical shared instructions\n' >&2
+    exit 1
+fi
+
+for skill in autonomous-goal parallel-work project-scaffold grill-me; do
+    link="$repo_root/dot_claude/skills/symlink_$skill.tmpl"
+    target="$(chezmoi --source "$repo_root" execute-template <"$link")"
+    target="${target/#"$HOME"/$repo_root}"
+    target="${target/\/.codex\//\/dot_codex\/}"
+    target="${target/\/.pi\/agent\//\/dot_pi\/agent\/}"
+    [[ -f "$target/SKILL.md" ]] || {
+        printf 'FAIL: Claude skill link %s does not point at a managed skill\n' "$skill" >&2
+        exit 1
+    }
+done
+
+# Every MCP tool Codex auto-approves must be allowed for Claude Code.
+script="$(mktemp)"
+trap 'rm -f -- "$script"' EXIT
+chezmoi --source "$repo_root" execute-template <"$settings" >"$script"
+fresh="$(python3 "$script" </dev/null)"
+while IFS= read -r rule; do
+    jq -e --arg rule "$rule" '.permissions.allow | index($rule) != null' <<<"$fresh" >/dev/null || {
+        printf 'FAIL: Claude settings do not allow %s\n' "$rule" >&2
+        exit 1
+    }
+done < <(python3 - "$codex_config" <<'PY'
+import re, sys
+for server, tool in re.findall(
+    r'^\[mcp_servers\."?([^".]+)"?\.tools\.([^\]]+)\]\napproval_mode = "approve"',
+    open(sys.argv[1]).read(), re.M):
+    print(f"mcp__{server}__{tool}")
+PY
+)
+
+# Local choices and Herdr's hook survive; repeated merges are stable.
+existing='{"model":"sonnet","theme":"dark","permissions":{"allow":["Bash(ls:*)"]},"hooks":{"SessionStart":[{"matcher":"x","hooks":[{"type":"command","command":"herdr"}]}]}}'
+once="$(python3 "$script" <<<"$existing")"
+twice="$(python3 "$script" <<<"$once")"
+[[ "$once" == "$twice" ]] || { printf 'FAIL: Claude settings merge is not idempotent\n' >&2; exit 1; }
+jq -e '
+    .model == "sonnet" and .theme == "dark" and .effortLevel == "high"
+    and (.permissions.allow | index("Bash(ls:*)") != null)
+    and .hooks.SessionStart[0].hooks[0].command == "herdr"
+    and ([.hooks.Stop[].hooks[] | select(.command | endswith("agent-goal\" hook-stop"))] | length == 1)
+' <<<"$twice" >/dev/null
+
+printf 'Claude portability checks passed.\n'

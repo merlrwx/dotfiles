@@ -7,6 +7,7 @@ set -euo pipefail
 # codex config defaults: {{ include "dot_codex/create_private_config.toml.tmpl" | sha256sum }}
 # codex hooks: {{ include "dot_codex/hooks.json.tmpl" | sha256sum }}
 # Pi settings: {{ include "dot_pi/agent/modify_settings.json.tmpl" | sha256sum }}
+# Claude settings: {{ include "dot_claude/modify_settings.json.tmpl" | sha256sum }}
 
 if ! command -v herdr >/dev/null 2>&1; then
     exit 0
@@ -24,4 +25,8 @@ fi
 
 if command -v pi >/dev/null 2>&1; then
     herdr integration install pi
+fi
+
+if command -v claude >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/claude" ]]; then
+    herdr integration install claude
 fi

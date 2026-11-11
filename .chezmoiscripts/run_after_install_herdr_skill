@@ -15,6 +15,7 @@ fi
 
 for target in \
     "$HOME/.codex/skills/herdr/SKILL.md" \
+    "$HOME/.claude/skills/herdr/SKILL.md" \
     "$HOME/.pi/agent/skills/herdr/SKILL.md"; do
     mkdir -p -- "${target%/*}"
     if ! cmp -s -- "$temporary" "$target"; then
