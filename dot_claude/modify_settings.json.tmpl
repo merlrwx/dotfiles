@@ -10,6 +10,10 @@ if not isinstance(settings, dict):
 for key, value in {"model": "opus", "effortLevel": "high"}.items():
     settings.setdefault(key, value)
 
+# Never add Claude co-author trailers to commits or attribution to PR/MR bodies.
+settings["attribution"] = {"commit": "", "pr": ""}
+settings.pop("includeCoAuthoredBy", None)  # deprecated predecessor of attribution
+
 # Codex auto-approved these MCP tools; keep the same approvals for Claude Code.
 permissions = settings.setdefault("permissions", {})
 allow = permissions.setdefault("allow", [])
