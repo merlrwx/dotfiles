@@ -1,6 +1,8 @@
 # Parallel work with Herdr
 
-Use parallel work when explicitly requested. The standing preference in this
+Use parallel work when explicitly requested. Claude Code also has standing
+authority to delegate independent work, with Agent-tool subagents on Sonnet;
+see `dot_claude/CLAUDE.md.tmpl`. The standing preference in this
 setup counts a multi-repository autonomous implementation goal as a request for
 bounded per-repository delegation; repeating `parallel-work` is unnecessary.
 Other tasks remain single-agent unless delegation is requested. Herdr owns visible
@@ -44,8 +46,10 @@ claim is made that arbitrary Herdr-restored sessions inherit coordinator access.
 Managed resume starts an absent process with the saved flags. It will not prompt
 an already-live idle process whose effective permissions Herdr cannot attest;
 exit that process first, then resume. An already-working task is left running.
-Pi uses its own runtime policy; unsupported profile/runtime combinations fail
-rather than silently applying a different policy.
+Pi uses its own runtime policy. `--kind claude` runs Claude Code on Sonnet with
+`--dangerously-skip-permissions`, so it supports only `full-access`; its goal
+continues through the `agent-goal` Stop hook. Unsupported profile/runtime
+combinations fail rather than silently applying a different policy.
 
 Folder trust is separate again. Codex can ask once for an unfamiliar repository
 even with `approval_policy="never"`; a trusted ancestor is not a guarantee that

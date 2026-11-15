@@ -1,15 +1,16 @@
 ---
 name: parallel-work
-description: Coordinate explicitly requested parallel or delegated coding and bounded reviews through Herdr and Git, including organization goals spanning repositories. Do not activate for ordinary single-agent work.
+description: Coordinate parallel or delegated coding and bounded reviews through Herdr and Git, including organization goals spanning repositories. Use when the user asks for it, or when standing delegation authority covers substantial independent implementation tasks that benefit from isolated worktrees. Do not activate for small single-agent work.
 ---
 
 # Parallel work
 
 Require `HERDR_ENV=1` before Herdr control and read its installed `herdr` skill.
 Inspect instructions, Git status and existing run state. Preserve unrelated
-sessions and work. Delegate only when the user explicitly asks, including the
-standing request for bounded per-repository delegation in multi-repository
-autonomous implementation goals. Other work stays single-agent by default.
+sessions and work. Delegate only when the user explicitly asks or a standing
+authority applies: bounded per-repository delegation in multi-repository
+autonomous implementation goals, or runtime instructions that permit delegating
+independent work. Other work stays single-agent by default.
 Workers must not delegate recursively or adopt sibling goals.
 
 ## Choose the mode

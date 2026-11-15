@@ -69,10 +69,11 @@ flowchart LR
 and its normal credentials; start DevPod only when the project's tools require
 its DevContainer.
 
-**Herdr parallel mode:** when you explicitly ask a coordinator to delegate, the
+**Herdr parallel mode:** when you ask a coordinator to delegate (Claude Code may
+delegate independent work on its own), the
 `parallel-work` skill can launch up to three named workers in separate Git
 worktrees. `agent-worker` prepares one autonomous goal per worktree, starts
-Codex or Pi through Herdr, and records run metadata under
+Codex, Pi, or Claude Code on Sonnet through Herdr, and records run metadata under
 `~/.local/state/agent-runs/`. The coordinator reviews each verifier result,
 collects its patch, integrates it, and then starts dependent phases. Workers do
 not delegate recursively. See [parallel work](docs/parallel-work.md) for the

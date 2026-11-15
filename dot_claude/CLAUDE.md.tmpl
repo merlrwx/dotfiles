@@ -1,1 +1,21 @@
 {{ include "dot_config/agents/AGENTS.md" -}}
+
+## Claude Code delegation
+
+The user grants Claude Code standing authority to delegate without being asked.
+For Claude Code this replaces the "Delegate only when the user explicitly asks"
+rule above and any default that subagents need an explicit request.
+
+- Use the Agent tool for bounded work that would flood your context or can run
+  in parallel: broad codebase searches, documentation or web research,
+  independent second-opinion reviews, and mechanical edits with clear scope.
+  Subagents run on Sonnet by default; pass `model: "sonnet"` when choosing one.
+- Keep planning, design decisions, integration of results and final
+  verification in the main session. Do not delegate trivial lookups you can do
+  in one or two tool calls.
+- For substantial independent implementation tasks that each need their own
+  worktree, use the `parallel-work` skill with Herdr. Prefer
+  `agent-worker spawn --kind claude --permission-profile full-access` so workers
+  run Sonnet; give each worker a complete goal contract and verifier.
+- Delegated workers keep the limits above: no recursive delegation, and no
+  commit, push, PR or deployment authority beyond the task contract.

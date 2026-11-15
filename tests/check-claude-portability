@@ -27,10 +27,15 @@ assert_contains "$mcp" 'register homelab-mcp {{ .homelab_mcp_url | quote }}'
 assert_contains "$mcp" 'register gitnexus'
 
 rendered="$(chezmoi --source "$repo_root" execute-template <"$instructions")"
-if [[ "$rendered" != "$(cat "$shared_instructions")" ]]; then
-    printf 'FAIL: CLAUDE.md does not render the canonical shared instructions\n' >&2
+shared="$(cat "$shared_instructions")"
+if [[ "$rendered" != "$shared"* ]]; then
+    printf 'FAIL: CLAUDE.md does not start with the canonical shared instructions\n' >&2
     exit 1
 fi
+grep -Fq '## Claude Code delegation' <<<"$rendered" || {
+    printf 'FAIL: CLAUDE.md is missing the Claude Code delegation policy\n' >&2
+    exit 1
+}
 
 for skill in autonomous-goal parallel-work project-scaffold grill-me; do
     link="$repo_root/dot_claude/skills/symlink_$skill.tmpl"
@@ -63,13 +68,20 @@ for server, tool in re.findall(
 PY
 )
 
+# Delegated subagents default to Sonnet, and Claude never claims attribution.
+jq -e '.env.CLAUDE_CODE_SUBAGENT_MODEL == "sonnet" and .attribution == {"commit": "", "pr": ""}' \
+    <<<"$fresh" >/dev/null || {
+    printf 'FAIL: Claude settings do not delegate to Sonnet without attribution\n' >&2
+    exit 1
+}
+
 # Local choices and Herdr's hook survive; repeated merges are stable.
-existing='{"model":"sonnet","theme":"dark","permissions":{"allow":["Bash(ls:*)"]},"hooks":{"SessionStart":[{"matcher":"x","hooks":[{"type":"command","command":"herdr"}]}]}}'
+existing='{"model":"sonnet","theme":"dark","env":{"CLAUDE_CODE_SUBAGENT_MODEL":"haiku","FOO":"1"},"permissions":{"allow":["Bash(ls:*)"]},"hooks":{"SessionStart":[{"matcher":"x","hooks":[{"type":"command","command":"herdr"}]}]}}'
 once="$(python3 "$script" <<<"$existing")"
 twice="$(python3 "$script" <<<"$once")"
 [[ "$once" == "$twice" ]] || { printf 'FAIL: Claude settings merge is not idempotent\n' >&2; exit 1; }
 jq -e '
-    .model == "sonnet" and .theme == "dark" and .effortLevel == "high"
+    .model == "sonnet" and .theme == "dark" and .env == {"CLAUDE_CODE_SUBAGENT_MODEL": "haiku", "FOO": "1"} and .effortLevel == "high"
     and (.permissions.allow | index("Bash(ls:*)") != null)
     and .hooks.SessionStart[0].hooks[0].command == "herdr"
     and ([.hooks.Stop[].hooks[] | select(.command | endswith("agent-goal\" hook-stop"))] | length == 1)
