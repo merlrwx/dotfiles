@@ -511,6 +511,21 @@ else:
         "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), "--kind", "pi",
         "--permission-profile", "read-only", check=False)
     assert unsupported.returncode != 0 and "unsupported" in unsupported.stderr
+    claude_sandboxed = call_worker("spawn", "--run-id", "policies", "--repo", str(repo), "--name", "claude-ro",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), "--kind", "claude",
+        "--permission-profile", "read-only", check=False)
+    assert claude_sandboxed.returncode != 0 and "unsupported" in claude_sandboxed.stderr
+    # Claude workers run Sonnet unattended and continue through the Stop hook.
+    claude = json.loads(call_worker("spawn", "--run-id", "claude", "--repo", str(repo), "--name", "claude",
+        "--goal", str(goals / "phase-01.md"), "--verify", str(verify_ok), "--kind", "claude",
+        "--permission-profile", "full-access").stdout)
+    assert claude["continuation"] == "hook"
+    claude_agent = json.loads(fake_state.read_text())["agents"][claude["herdr_name"]]
+    assert claude_agent["agent"] == "claude"
+    assert claude_agent["argv"][-3:] == ["--model", "sonnet", "--dangerously-skip-permissions"]
+    assert not claude_agent["prompt"].startswith("/goal ")
+    claude_active = json.loads((Path(claude["worktree"]) / ".agent/ACTIVE").read_text())
+    assert claude_active["continuation"] == "hook"
     # Lost create responses reconcile exact existing workspace/path/branch.
     environment["FAKE_HERDR_LOSE_CREATE"] = "1"
     lost = call_worker("spawn", "--run-id", "recover", "--repo", str(repo), "--name", "lost",

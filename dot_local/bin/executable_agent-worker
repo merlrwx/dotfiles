@@ -225,12 +225,21 @@ def worktree_directory(override: str | None) -> Path:
     return Path(value).expanduser().resolve()
 
 
+# Codex owns /goal natively, Pi through its extension, and Claude Code through
+# the agent-goal Stop hook installed in its settings.
+CONTINUATION = {"codex": "native", "pi": "pi", "claude": "hook"}
+
+
 def policy_arguments(kind: str, profile: str) -> list[str]:
     if kind == "codex":
         sandbox = {"full-access": "danger-full-access", "workspace-write": "workspace-write", "read-only": "read-only"}[profile]
         return ["--sandbox", sandbox, "--config", 'approval_policy="never"', "--enable", "goals"]
     if kind == "pi" and profile == "full-access":
         return []  # Pi has no filesystem sandbox; only this explicit profile is supported.
+    if kind == "claude" and profile == "full-access":
+        # Claude Code prompts for tools outside bypass mode, which would stall an
+        # unattended worker; only the explicit full-access profile is supported.
+        return ["--model", "sonnet", "--dangerously-skip-permissions"]
     raise WorkerError(f"Permission profile {profile} is unsupported for {kind}; no autonomous adapter available.")
 
 
@@ -375,7 +384,7 @@ def prepare_task(args: argparse.Namespace, manifest: dict[str, Any]) -> dict[str
     return {
         "name": args.name, "kind": args.kind, "permission_profile": args.permission_profile,
         "agent_arguments": policy_arguments(args.kind, args.permission_profile),
-        "continuation": "native" if args.kind == "codex" else "pi",
+        "continuation": CONTINUATION[args.kind],
         "repo": str(root), "repository_id": identity, "herdr_name": resource,
         "worktree": str(worktree), "branch": branch, "base_commit": base,
         "base_ref": args.base, "initial_base_commit": base,
@@ -1047,7 +1056,8 @@ def parser() -> argparse.ArgumentParser:
     spawn.add_argument("--repo", default=".")
     spawn.add_argument("--name", required=True)
     spawn.add_argument("--goal", required=True, help="path to a complete task-specific goal contract")
-    spawn.add_argument("--kind", default="codex", help="Herdr agent kind, such as codex or pi")
+    spawn.add_argument("--kind", default="codex", choices=sorted(CONTINUATION),
+                       help="Herdr agent kind: codex, pi, or claude (runs Sonnet)")
     spawn.add_argument("--run-id", required=True)
     spawn.add_argument("--depends-on", action="append", default=[])
     spawn.add_argument("--base", default="HEAD")
