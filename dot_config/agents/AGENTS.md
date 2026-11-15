@@ -16,6 +16,11 @@
   Never broadly reset, restore, clean, or remove another worker's changes.
 - Commits require explicit authority in the task contract. Pushes, PRs, and deployments require separate explicit authority.
 - If a repository provides DevPod or a DevContainer, prefer it and use its `mise` tasks when available.
-- For new application repositories, consider the shared `project-scaffold` skill and select only features that fit the inspected requirements.
-- Verify observable acceptance criteria with the repository's existing checks. Fix failures caused by your changes.
+- Start every new repository with the shared `project-scaffold` skill: generate
+  it with `new-project` from the latest DevOps template release, selecting only
+  features that fit the inspected requirements (`generic` when no listed stack
+  applies). Hand-build only when the user asks or Copier cannot run; say why.
+- Verify observable acceptance criteria with the repository's existing checks;
+  run `mise run check` when the repository defines it. Fix the root cause of
+  failures caused by your changes instead of adding suppressions or skips.
 - When commits are authorized, use Conventional Commits and keep each commit coherent. Push or deploy only when explicitly authorized.

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# new-project resolves the newest release tag and hands off to copier copy.
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+new_project="$repo_root/dot_local/bin/executable_new-project"
+root="$(mktemp -d)"
+trap 'rm -rf -- "$root"' EXIT
+
+template="$root/template"
+git init -q "$template"
+git -C "$template" -c user.email=t@example.invalid -c user.name=T commit -q --allow-empty -m init
+for tag in v1.0.0 v1.2.0 v1.10.0 v2.0.0-rc1 latest; do
+    git -C "$template" tag "$tag"
+done
+
+mkdir "$root/bin"
+cat >"$root/bin/copier" <<'COPIER'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$COPIER_ARGS"
+COPIER
+chmod +x "$root/bin/copier"
+export PATH="$root/bin:$PATH" PROJECT_TEMPLATE="$template" COPIER_ARGS="$root/args"
+
+"$new_project" "$root/app" --data-file answers.yml --defaults 2>/dev/null
+expected=$(printf '%s\n' copy --vcs-ref v1.10.0 --data-file answers.yml --defaults "$template" "$root/app")
+[[ "$(cat "$root/args")" == "$expected" ]] || { printf 'FAIL: unexpected copier call:\n%s\n' "$(cat "$root/args")" >&2; exit 1; }
+
+"$new_project" --vcs-ref v1.0.0 "$root/app" 2>/dev/null
+grep -qx v1.0.0 "$root/args" || { printf 'FAIL: --vcs-ref was not honoured\n' >&2; exit 1; }
+
+mkdir "$root/existing" && touch "$root/existing/file"
+if "$new_project" "$root/existing" 2>"$root/err"; then
+    printf 'FAIL: non-empty destination was accepted\n' >&2; exit 1
+fi
+grep -q 'not empty' "$root/err"
+
+if "$new_project" 2>/dev/null; then printf 'FAIL: missing destination was accepted\n' >&2; exit 1; fi
+
+printf 'new-project checks passed.\n'

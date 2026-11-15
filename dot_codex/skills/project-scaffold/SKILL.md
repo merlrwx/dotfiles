@@ -1,11 +1,11 @@
 ---
 name: project-scaffold
-description: Create new application repositories with the DevOps Copier template, or assess and selectively adopt its components in an existing repository.
+description: Required first step for every new repository - generate it from the latest DevOps Copier template release with new-project. Also assesses and selectively adopts template components in an existing repository.
 ---
 
 # Project scaffold
 
-Use `gh:merlrwx/devops-template` for a new repository when its supported project types and modules are a good fit. Pin generation to a released template version. If the template does not meaningfully fit the request, explain why and build with the project's existing conventions.
+Every new repository starts from `gh:merlrwx/devops-template`, generated with `new-project` at the latest release tag. Use the `generic` project type when no Python type fits; it still provides Mise, `mise run check`, the suppression guard and agent guidance. Build by hand only when the user asks for that or Copier cannot run, and say which.
 
 For the feature matrix and dependency rules, consult [selection rules](references/selection-rules.md).
 
@@ -35,18 +35,15 @@ If an option depends on another option, satisfy that dependency or leave the dep
 1. Inspect the destination and project request. Preserve any existing files; never overwrite a non-empty destination without reviewing it.
 2. Choose the project type and features from the rules above. Resolve required names, ports, namespaces, image names, and CI settings from explicit requirements or the source repository. Avoid inventing production values or credentials.
 3. Write the selected answers to a temporary YAML file outside the destination. Do not edit `.copier-answers.yml` in the generated project.
-4. Generate from a pinned release:
+4. Generate from the latest release. `new-project` resolves the newest `v*` tag, refuses a non-empty destination and passes the remaining options to `copier copy`; use `--vcs-ref TAG` only to reproduce an older release:
 
    ```sh
-   copier copy \
-     --vcs-ref v1.1.0 \
+   new-project ./my-project \
      --data-file /tmp/project-scaffold-answers.yml \
-     --defaults \
-     gh:merlrwx/devops-template \
-     ./new-project
+     --defaults
    ```
 
-5. Review the generated file list and configuration. Run the generated Mise, lint, test, and build tasks that apply to the selected features. Fix project-specific gaps and report any external credentials or manual configuration required.
+5. Review the generated file list and configuration. Initialize Git, then run `mise install --locked`, `mise run setup` where defined, and `mise run check`. Extend `check` when you add a language or tool so it stays the single gate. Fix project-specific gaps and report any external credentials or manual configuration required.
 6. Explain the chosen and omitted components, any manual changes, and the checks run.
 
 ## Assess an existing repository

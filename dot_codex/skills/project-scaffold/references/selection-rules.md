@@ -1,6 +1,6 @@
 # Project scaffold selection rules
 
-Use the released `v1.1.0` template. All modules below are optional; choose from inspected requirements.
+Use the latest released template (`new-project` resolves it). All modules below are optional except commit hooks, which default to on for Python types; choose from inspected requirements.
 
 | Requirement | Select | Dependency or boundary |
 | --- | --- | --- |
@@ -28,4 +28,4 @@ Coverage measures application code, excluding the thin Streamlit entrypoint; it 
 
 For existing repositories, inspect first, generate into a temporary directory, compare with the working tree and apply reviewed changes selectively. Preserve `.copier-answers.yml` through Copier rather than hand editing it. Existing single package projects retain their layout unless deliberately migrated. A v1.0.0 project missing recorded option metadata needs its original selections supplied during the documented update/recovery procedure.
 
-See [template feature documentation](https://github.com/merlrwx/devops-template/blob/v1.1.0/docs/features.md) for answer profiles, tokens, module dependencies and migration details.
+See [template feature documentation](https://github.com/merlrwx/devops-template/blob/main/docs/features.md) for answer profiles, tokens, module dependencies and migration details.

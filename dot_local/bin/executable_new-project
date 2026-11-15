@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Generate a new repository from the newest release of the DevOps Copier
+# template. Remaining arguments go to `copier copy`, for example
+# `--data-file answers.yml --defaults`.
+set -euo pipefail
+
+template="${PROJECT_TEMPLATE:-gh:merlrwx/devops-template}"
+
+usage() {
+    printf 'Usage: new-project [--vcs-ref TAG] DESTINATION [COPIER_OPTIONS...]\n' >&2
+    exit 2
+}
+
+ref=""
+if [[ ${1-} == --vcs-ref ]]; then
+    [[ $# -ge 2 ]] || usage
+    ref="$2"
+    shift 2
+fi
+[[ $# -ge 1 && ${1-} != -* ]] || usage
+destination="$1"
+shift
+
+if [[ -e $destination && -n "$(ls -A -- "$destination" 2>/dev/null)" ]]; then
+    printf 'new-project: %s is not empty; assess existing repositories with the project-scaffold skill instead.\n' "$destination" >&2
+    exit 1
+fi
+
+if [[ -z $ref ]]; then
+    remote="$template"
+    [[ $remote == gh:* ]] && remote="https://github.com/${remote#gh:}.git"
+    ref="$(git ls-remote --tags --refs --sort=-version:refname "$remote" 'v*' |
+        sed -n 's|.*refs/tags/||; /^v[0-9][0-9.]*$/{p;q;}')"
+    [[ -n $ref ]] || {
+        printf 'new-project: no release tag found in %s\n' "$template" >&2
+        exit 1
+    }
+fi
+
+printf 'new-project: generating %s from %s %s\n' "$destination" "$template" "$ref" >&2
+exec copier copy --vcs-ref "$ref" "$@" "$template" "$destination"
