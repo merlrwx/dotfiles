@@ -21,6 +21,16 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "\"{{ .chezmoi.homeDir }}/.local/bin/agent-check\" hook-stop",
+            "statusMessage": "Running mise run check",
+            "timeout": 600,
+            "type": "command"
+          }
+        ]
       }
     ]
   }

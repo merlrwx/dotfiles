@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Stop hook: run the repository's `mise run check` before an agent finishes.
+
+The hook only acts when the working tree has changes and the repository
+defines a Mise `check` task. A passing tree state is remembered per worktree so
+an unchanged tree is not checked twice. Autonomous goals are skipped because
+their own verifier gates completion. Set AGENT_CHECK_HOOK=0 to disable it.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+OUTPUT_LINES = 60
+
+
+def git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True)
+
+
+def fingerprint(root: Path) -> str | None:
+    """Hash HEAD, tracked changes and untracked file contents."""
+    digest = hashlib.sha256()
+    for args in (("rev-parse", "HEAD"), ("diff", "HEAD", "--binary", "--no-ext-diff")):
+        result = git(root, *args)
+        if result.returncode:
+            return None
+        digest.update(result.stdout)
+    untracked = git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    for name in sorted(filter(None, untracked.stdout.split(b"\0"))):
+        digest.update(name)
+        path = root / os.fsdecode(name)
+        if path.is_file() and not path.is_symlink():
+            digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def hook_stop() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    # Block at most once per stop so an unfixable failure cannot loop.
+    if os.environ.get("AGENT_CHECK_HOOK") == "0" or payload.get("stop_hook_active") is True:
+        print("{}")
+        return 0
+    cwd = Path(payload.get("cwd") or os.getcwd())
+    top = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True)
+    if top.returncode:
+        print("{}")
+        return 0
+    root = Path(top.stdout.strip())
+    status = git(root, "status", "--porcelain")
+    if (root / ".agent/ACTIVE").exists() or status.returncode or not status.stdout.strip():
+        print("{}")
+        return 0
+    task = subprocess.run(["mise", "tasks", "info", "check"], cwd=root, capture_output=True)
+    if task.returncode:
+        print("{}")  # No check task, an untrusted config, or no Mise.
+        return 0
+
+    marker = Path(git(root, "rev-parse", "--path-format=absolute", "--git-path",
+                      "agent-check-pass").stdout.decode().strip())
+    state = fingerprint(root)
+    if state and marker.is_file() and marker.read_text().strip() == state:
+        print("{}")
+        return 0
+
+    timeout = int(os.environ.get("AGENT_CHECK_TIMEOUT", "540"))
+    try:
+        result = subprocess.run(["mise", "run", "check"], cwd=root, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(json.dumps({"systemMessage": f"mise run check exceeded {timeout}s; not enforced"}))
+        return 0
+    if result.returncode == 0:
+        if state:
+            marker.write_text(state + "\n")
+        print(json.dumps({"systemMessage": "mise run check passed"}))
+        return 0
+    tail = "\n".join(result.stdout.splitlines()[-OUTPUT_LINES:])
+    reason = (
+        "`mise run check` failed in this repository. Fix the root cause of each "
+        "failure; do not add suppression comments, skip tests or weaken the check. "
+        "If a failure predates your changes or is outside the task, report it to "
+        "the user instead of fixing it, then finish.\n\n" + tail
+    )
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 0
+
+
+def main() -> int:
+    if sys.argv[1:] != ["hook-stop"]:
+        print("Usage: agent-check hook-stop  (reads a Stop-hook JSON payload on stdin)",
+              file=sys.stderr)
+        return 2
+    return hook_stop()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

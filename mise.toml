@@ -1,0 +1,21 @@
+# Repository tasks for working on these dotfiles. chezmoi does not install this
+# file (see .chezmoiignore); global tools live in dot_config/mise/config.toml.
+
+[tasks.check]
+description = "Run every dotfiles regression check and report all failures"
+run = '''
+#!/usr/bin/env bash
+set -uo pipefail
+total=0
+failed=""
+for check in tests/check-*; do
+    total=$((total + 1))
+    printf '==> %s\n' "$check"
+    "$check" || failed="$failed $check"
+done
+if [ -n "$failed" ]; then
+    printf 'FAILED:%s\n' "$failed" >&2
+    exit 1
+fi
+printf 'All %s dotfiles checks passed.\n' "$total"
+'''

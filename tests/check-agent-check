@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# agent-check gates agent Stop events on `mise run check` for changed trees.
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+agent_check="$repo_root/dot_local/bin/executable_agent-check"
+root="$(mktemp -d)"
+trap 'rm -rf -- "$root"' EXIT
+
+# A fake Mise: `tasks info check` succeeds when a check script exists, and
+# `run check` counts its runs and executes it.
+mkdir "$root/bin"
+cat >"$root/bin/mise" <<'MISE'
+#!/usr/bin/env bash
+case "$*" in
+  "tasks info check") [[ -x ./check.sh ]] ;;
+  "run check") echo run >>"$MISE_RUNS"; ./check.sh ;;
+  *) exit 2 ;;
+esac
+MISE
+chmod +x "$root/bin/mise"
+export PATH="$root/bin:$PATH" MISE_RUNS="$root/runs"
+unset AGENT_CHECK_HOOK
+
+repo="$root/repo"
+git init -q "$repo"
+git -C "$repo" config user.email t@example.invalid
+git -C "$repo" config user.name T
+printf '#!/bin/sh\necho checking\n[ ! -e broken ] || { echo "lint: broken file"; exit 1; }\n' >"$repo/check.sh"
+chmod +x "$repo/check.sh"
+git -C "$repo" add check.sh && git -C "$repo" commit -qm init
+
+hook() { printf '{"cwd":"%s","stop_hook_active":%s}' "$repo" "${1:-false}" | "$agent_check" hook-stop; }
+runs() { [[ -f $MISE_RUNS ]] && wc -l <"$MISE_RUNS" | tr -d ' ' || echo 0; }
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+[[ "$(hook)" == '{}' ]] || fail 'clean tree should not run checks'
+[[ "$(runs)" == 0 ]] || fail 'clean tree ran mise'
+
+touch "$repo/broken"
+output="$(hook)"
+jq -e '.decision == "block" and (.reason | contains("lint: broken file")) and (.reason | contains("root cause"))' <<<"$output" >/dev/null ||
+    fail "failing check did not block: $output"
+[[ "$(hook true)" == '{}' ]] || fail 'stop_hook_active must not block twice'
+AGENT_CHECK_HOOK=0 hook | grep -qx '{}' || fail 'AGENT_CHECK_HOOK=0 did not disable the hook'
+
+rm "$repo/broken"
+printf 'change\n' >"$repo/feature.txt"
+jq -e '.decision == null' <<<"$(hook)" >/dev/null || fail 'passing check blocked'
+before="$(runs)"
+hook >/dev/null
+[[ "$(runs)" == "$before" ]] || fail 'unchanged passing tree was checked again'
+printf 'more\n' >>"$repo/feature.txt"
+hook >/dev/null
+[[ "$(runs)" == $((before + 1)) ]] || fail 'changed tree was not rechecked'
+
+mkdir "$repo/.agent" && touch "$repo/.agent/ACTIVE" "$repo/broken"
+[[ "$(hook)" == '{}' ]] || fail 'active autonomous goal should own verification'
+rm -r "$repo/.agent"
+
+chmod -x "$repo/check.sh"
+[[ "$(hook)" == '{}' ]] || fail 'repository without a check task should be skipped'
+
+printf '{"cwd":"%s"}' "$root" | "$agent_check" hook-stop | grep -qx '{}' || fail 'non-repository should be skipped'
+
+printf 'agent-check checks passed.\n'

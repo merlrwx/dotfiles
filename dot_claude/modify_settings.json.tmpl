@@ -34,22 +34,27 @@ for rule in [
     if rule not in allow:
         allow.append(rule)
 
-# The portable goal hook speaks Claude Code's Stop-hook protocol. Herdr adds its
+# The portable goal hook speaks Claude Code's Stop-hook protocol. agent-check
+# runs the repository's `mise run check` when the tree changed. Herdr adds its
 # own SessionStart hook through `herdr integration install claude`.
-goal_command = '"{{ .chezmoi.homeDir }}/.local/bin/agent-goal" hook-stop'
+bin_dir = "{{ .chezmoi.homeDir }}/.local/bin"
 stop_hooks = settings.setdefault("hooks", {}).setdefault("Stop", [])
-if not any(
-    hook.get("command") == goal_command
-    for group in stop_hooks
-    for hook in group.get("hooks", [])
-):
-    stop_hooks.append({
-        "hooks": [{
-            "type": "command",
-            "command": goal_command,
-            "statusMessage": "Checking autonomous goal state",
-            "timeout": 5,
-        }]
-    })
+for command, message, timeout in [
+    (f'"{bin_dir}/agent-goal" hook-stop', "Checking autonomous goal state", 5),
+    (f'"{bin_dir}/agent-check" hook-stop', "Running mise run check", 600),
+]:
+    if not any(
+        hook.get("command") == command
+        for group in stop_hooks
+        for hook in group.get("hooks", [])
+    ):
+        stop_hooks.append({
+            "hooks": [{
+                "type": "command",
+                "command": command,
+                "statusMessage": message,
+                "timeout": timeout,
+            }]
+        })
 
 print(json.dumps(settings, indent=2))

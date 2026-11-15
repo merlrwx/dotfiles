@@ -2,6 +2,7 @@ setup
 old-setup
 install
 README.md
+mise.toml
 .config/agents/**
 alacritty/**
 archive_*/**

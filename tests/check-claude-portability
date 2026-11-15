@@ -85,6 +85,7 @@ jq -e '
     and (.permissions.allow | index("Bash(ls:*)") != null)
     and .hooks.SessionStart[0].hooks[0].command == "herdr"
     and ([.hooks.Stop[].hooks[] | select(.command | endswith("agent-goal\" hook-stop"))] | length == 1)
+    and ([.hooks.Stop[].hooks[] | select(.command | endswith("agent-check\" hook-stop")) | .timeout] == [600])
 ' <<<"$twice" >/dev/null
 
 printf 'Claude portability checks passed.\n'

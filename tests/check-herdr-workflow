@@ -178,6 +178,7 @@ if shutil.which("herdr"):
             for hook in group.get("hooks", [])
         ]
         assert any("agent-goal" in command and "hook-stop" in command for command in template_stop_commands)
+        assert any("agent-check" in command and "hook-stop" in command for command in template_stop_commands)
         hooks["hooks"]["Notification"] = [{"hooks": [{"type": "command", "command": "custom-notification"}]}]
         hooks["userExtension"] = "preserve-me"
         hooks_path.write_text(json.dumps(hooks) + "\n")

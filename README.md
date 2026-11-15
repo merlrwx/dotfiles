@@ -8,6 +8,14 @@ tools, Codex, Claude Code, Pi, Herdr, Copier, and DevPod. The `project-scaffold`
 available to Codex, Claude Code, and Pi from the shared `~/.codex/skills` directory. Homelab MCP is optional; the desktop
 profile adds GUI configuration.
 
+Agents start every new repository with `new-project DEST [copier options]`, which
+generates it from the latest `devops-template` release. In any repository that
+defines a Mise `check` task, the `agent-check` Stop hook for Claude Code and Codex
+runs `mise run check` before the agent finishes a turn that changed files, and
+asks it to fix the root cause when the check fails. It skips clean trees, trees
+that already passed and active autonomous goals; set `AGENT_CHECK_HOOK=0` to turn
+it off. Run `mise run check` here to run every dotfiles regression check.
+
 ## Install
 
 Install Git and curl, then initialize chezmoi and select `fedora-sway` or `cli`:
