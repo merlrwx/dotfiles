@@ -96,7 +96,7 @@ with TemporaryDirectory(prefix="devpod-dotfiles-") as temp_dir:
         "    cat <<'INSTALLER'\n"
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "[[ $(command -v node) == \"$HOME/managed-node/bin/node\" ]] || { echo 'Managed Node.js missing from Pi install environment' >&2; exit 1; }\n"
+        "[ \"$(command -v node)\" = \"$HOME/managed-node/bin/node\" ] || { echo 'Managed Node.js missing from Pi install environment' >&2; exit 1; }\n"
         "install -d -m 0755 \"$HOME/.pi/agent/bin\"\n"
         "cat >\"$HOME/.pi/agent/bin/pi\" <<'PI'\n"
         "#!/usr/bin/env bash\n"
